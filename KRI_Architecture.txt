@@ -1,0 +1,178 @@
+1. Updated KRI SharePoint Architecture
+This document defines the SharePoint List architecture required to build the KRI platform. There are now 6 SharePoint Lists in total. Each list maps directly to a functional area of the platform and works together through lookup columns and Power Automate flows.
+
+Master List Summary
+
+#List NamePurposeLinks To1KRI_Clients
+Master client registry — every contact starts here
+All other lists
+2KRI_Communications
+Log of all interactions per client
+KRI_Clients
+3KRI_Engagements
+Proposals, tenders, and deals per client
+KRI_Clients
+4KRI_Automations
+Scheduled greeting/reminder config per client
+KRI_Clients
+5KRI_Users
+KCC team member profiles and targets
+KRI_Clients
+6KRI_StageHistory
+Audit log of K ? R ? I stage changes
+KRI_Clients
+Detailed List Schemas
+List 1: KRI_Clients
+
+The master list. Every client contact registered by any KCC team member lives here. This is the central table that all other lists reference.
+
+Column NameColumn TypeRequiredDescription / NotesTitle (Client Full Name)Single line of textYesBuilt-in SharePoint Title column — rename to ‘Client Full Name’. Can be auto-populated via Power Automate as a concatenation of FirstName + LastName on record creation
+FirstNameSingle line of textYesClient first name — sourced from current KRI-2025 databaseLastNameSingle line of textYesClient last name — sourced from current KRI-2025 databaseCompanyNameSingle line of textYesClient's organisation or company
+JobTitleSingle line of textNoClient’s job title or position within their organisation — sourced from KRI-2025 databasePhoneSingle line of textYesPrimary contact phone number
+EmailSingle line of textYesPrimary contact email address
+GenderChoiceNoClient gender. Choices: Male / Female / Other / Prefer not to say — sourced from KRI-2025 databaseLinkedInProfileHyperlinkNoLinkedIn profile URL for the client
+InstagramAccountSingle line of textNoClient Instagram handle or profile URL — sourced from KRI-2025 databaseKCCContactPersonPerson or GroupYesThe KCC team member who registered this client
+KRISecondaryContactPerson or GroupNoSecondary KCC team member contact for this client — sourced from KRI-2025 KRI Secondary Contact columnProjectNameSingle line of textNoProject or account the client is associated with (e.g. Project 1500, Project Uno, Association) — sourced from KRI-2025 databaseKRIStageChoiceYesCurrent KRI stage: Knowledge / Rapport / Intimacy
+IndustrySingle line of textNoClient's industry or sector
+NotesMultiple lines of textNoGeneral notes about the client
+DateRegisteredDate and TimeYesAuto-set to today's date when record is created
+LastContactDateDate and TimeNoUpdated each time a communication is logged
+BirthdayDateDate and TimeNoUsed by Power Automate for birthday greeting automation
+IsActiveYes/NoYesSet to Yes by default. Toggle to No to archive a client
+KRI Stage Choice values must be set exactly as: Knowledge | Rapport | Intimacy — these values are used throughout Power Apps forms and Power Automate conditions.
+
+List 2: KRI_Communications
+
+Every interaction with a client is logged here. This powers the Communication Tracking feature, showing the full conversation history per client.
+
+Column NameColumn TypeRequiredDescription / NotesTitle (Subject)Single line of textYesRename to 'Subject' — brief description of the interaction
+ClientIDLookupYesLookup to KRI_Clients — links this log to the correct client
+LoggedByPerson or GroupYesThe KCC team member who logged this entry
+CommunicationTypeChoiceYesEmail / Meeting / Phone Call / Message / Tender / Other
+CommunicationDateDate and TimeYesDate and time the interaction occurred
+NotesMultiple lines of textYesFull notes, meeting minutes, or message summary
+FollowUpRequiredYes/NoNoToggle to Yes if a follow-up action is needed
+FollowUpDateDate and TimeNoTarget date for the follow-up action
+ProposalSubmittedYes/NoNoFlag if a proposal or tender was submitted during this interaction
+List 3: KRI_Engagements
+
+Tracks proposals, tenders, and business deals associated with each client. This is where Rapport and Intimacy stage business activity is recorded.
+
+Column NameColumn TypeRequiredDescription / NotesTitle (Engagement Name)Single line of textYesName or description of the business opportunity
+ClientIDLookupYesLookup to KRI_Clients — links to the relevant client
+EngagementTypeChoiceYesProposal / Tender / Contract / Partnership / Project / Other
+StatusChoiceYesDraft / Submitted / Under Review / Won / Lost / On Hold
+SubmittedDateDate and TimeNoDate the proposal or tender was submitted
+EstimatedValueCurrencyNoEstimated contract or deal value in local currency
+ActualValueCurrencyNoConfirmed value once deal is closed
+ClosedDateDate and TimeNoDate the deal was won or lost
+OwnedByPerson or GroupYesThe KCC team member responsible for this engagement
+NotesMultiple lines of textNoAdditional context, outcome notes, or deal specifics
+List 4: KRI_Automations
+
+Stores automation configuration for each client. Power Automate checks this list to know when to send greetings, reminders, and follow-up messages.
+
+Column NameColumn TypeRequiredDescription / NotesTitle (Automation Name)Single line of textYesShort label for the automation rule
+ClientIDLookupYesLookup to KRI_Clients — which client this rule applies to
+AutomationTypeChoiceYesBirthday Message / Holiday Greeting / Follow-Up Reminder / Seasonal Card
+TriggerDateDate and TimeNoSpecific date for one-time automations or reminders
+IsRecurringYes/NoYesIf Yes, automation repeats annually (e.g. birthday, Christmas)
+IsEnabledYes/NoYesToggle to disable without deleting the rule
+MessageTemplateMultiple lines of textNoCustom message content or notes for personalisation
+LastSentDateDate and TimeNoAuto-updated by Power Automate when a message is sent
+AssignedToPerson or GroupNoKCC member responsible for this client's automations
+Power Automate scheduled flows query this list daily, filtering for IsEnabled = Yes and TriggerDate = Today. The LastSentDate column prevents duplicate sends — the flow checks it before sending.
+
+List 5: KRI_Users
+
+Stores KCC team member profiles, performance targets, and role information. Powers the personal dashboard feature. (Leaderboard features removed per your request).
+
+Column NameColumn TypeRequiredDescription / NotesTitle (Full Name)Single line of textYesKCC team member's full name
+UserAccountPerson or GroupYesLinked to their Microsoft 365 / SharePoint account
+JobTitleSingle line of textNoTheir role within KCC
+DepartmentSingle line of textNoTheir department or team
+TargetClientsNumberNoMonthly or annual target for number of clients to register
+TargetDealsNumberNoMonthly or annual target for deals to close
+ProfilePhotoImageNoProfile photo for display on the dashboard
+IsActiveYes/NoYesSet to No when a team member leaves to hide from active view
+JoinDateDate and TimeNoDate they joined the KCC team
+List 6: KRI_StageHistory
+
+An audit trail of every KRI stage change for every client. Automatically written by Power Automate whenever the KRIStage field on KRI_Clients changes.
+
+Column NameColumn TypeRequiredDescription / NotesTitle (Change Summary)Single line of textYesAuto-generated, e.g. 'Acme Corp: K ? R'
+ClientIDLookupYesLookup to KRI_Clients — the client whose stage changed
+PreviousStageChoiceYesThe stage before the change: Knowledge / Rapport / Intimacy
+NewStageChoiceYesThe stage after the change: Knowledge / Rapport / Intimacy
+ChangedByPerson or GroupYesThe KCC team member who made the change
+ChangedDateDate and TimeYesDate and time the stage was updated
+NotesMultiple lines of textNoOptional reason or context for the stage change
+This list is written to by Power Automate only — never directly by users. A trigger flow fires whenever KRIStage is modified in KRI_Clients, capturing the old and new values automatically.
+
+List Relationships Summary
+
+All lists connect back to KRI_Clients via Lookup columns. This is the updated relationship map:
+
+ListLookup ColumnPoints ToRelationship TypeKRI_CommunicationsClientID
+KRI_Clients
+Many-to-One (many logs per client)
+KRI_EngagementsClientID
+KRI_Clients
+Many-to-One (many deals per client)
+KRI_AutomationsClientID
+KRI_Clients
+Many-to-One (many rules per client)
+KRI_StageHistoryClientID
+KRI_Clients
+Many-to-One (many stage changes per client)
+KRI_ClientsKCCContactPerson
+M365 User Directory
+Person column (native SharePoint)
+Required Power Automate Flows
+
+#Flow NameTrigger TypeWhat It Does1Log Stage Change
+When item modified (KRI_Clients)
+Detects KRIStage change, writes audit row to KRI_StageHistory automatically
+2Send Birthday Greeting
+Scheduled – Daily 8am
+Checks KRI_Clients BirthdayDate = Today, sends Outlook email, updates LastContactDate
+3Send Holiday Greeting
+Scheduled – specific dates
+Reads KRI_Automations where AutomationType = Holiday Greeting and TriggerDate = Today
+4Follow-Up Reminder
+Scheduled – Daily 8am
+Checks KRI_Communications for FollowUpRequired = Yes and FollowUpDate = Today, sends Teams or email alert to LoggedBy
+5New Client Welcome
+When item created (KRI_Clients)
+Sends a welcome email to the client (optional) and notifies the KCCContactPerson via Teams
+2. Intricate Implementation Plan
+As the lists are already made and saved on SharePoint, we will bypass the actual list creation steps and focus directly on configuring operations, mapping the advanced automation logic, and structuring the Power Apps Canvas application.
+Phase 1: Validating Lookups and Permissions
+? Verify ClientID Lookups: Navigate to KRI_Communications, KRI_Engagements, KRI_Automations, and KRI_StageHistory. Validate that the ClientID column pulls from the ‘Title (Client Full Name)’ field of KRI_Clients. Ensure you retrieve additional fields like Email, JobTitle, Gender, and ProjectName directly through the lookup setting to reduce heavy API load in your Power App.
+? Indexed Columns: Go to List Settings for KRI_Clients. Set KRIStage, LastContactDate, BirthdayDate, Gender, and ProjectName as Indexed Columns. This is a safety measure to ensure queries and flows operate smoothly when your lists exceed the 5,000-item threshold.
+Phase 2: Power Automate Deep Configuration
+? Flow 1: Stage Change Logic: * Trigger: "When an item or a file is modified" on KRI_Clients.
+? Add the SharePoint action: "Get changes for an item or a file (properties only)".
+? Insert a condition to check if Has Changed: KRIStage is equal to true.
+? If true, proceed to trigger a "Create item" action in KRI_StageHistory to log the transition.
+
+? Flow 2: Daily Scheduled Reminders & Birthday Messages:
+? Trigger: Recurrence (1 Day frequency, at 08:00 AM).
+? Action: "Get items" from KRI_Clients.
+? Intricate Logic: Since OData can't filter pure MM-dd dates efficiently from a DateTime column, pull active items and use a Power Automate "Filter Array" matching formatDateTime(item()?['BirthdayDate'], 'MM-dd') to formatDateTime(utcNow(), 'MM-dd'). For all matching profiles, send the Outlook email and trigger an update setting LastContactDate to utcNow().
+
+Phase 3: Power Apps Canvas App Orchestration
+? Dynamic Data Connections: Map all 6 active SharePoint lists into your app sources.
+? The Master-Detail Client Thread Screen: In Power Apps, drop a vertical gallery bound to KRI_Clients. Display client names using the FirstName and LastName columns directly (e.g. Concatenate(ThisItem.FirstName, " ", ThisItem.LastName)) for a cleaner UX. You can also surface JobTitle, Gender, and ProjectName on each client card for quick context. When a user selects a client from this gallery, populate a second gallery displaying logged communications via the formula: Filter(KRI_Communications, ClientID.Value = SelectedClient.Title). This forms an instantly updating interaction history thread without creating complex parent-child structures.
+
+? Pipeline Management Without Leaderboard: Use standard categorized galleries to represent your KRI_Engagements by their Status choices (Draft, Submitted, Won, Lost). To calculate top metrics on an individual's dashboard, call sums or averages like: Sum(Filter(KRI_Engagements, Status.Value = "Won"), ActualValue).
+
+Phase 4: Final Deployment & Embedding
+
+? After building the screens, save and publish your Power Apps Canvas App.
+
+? On your target modern SharePoint page, put the page into Edit mode.
+
+? Click the + icon to add a new web part and select Power Apps.
+
+? Paste your App link or App ID into the property menu to integrate the platform directly onto your team site.

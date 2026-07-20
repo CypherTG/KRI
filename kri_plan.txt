@@ -1,0 +1,762 @@
+
+KRI PLATFORM
+Full Implementation Plan
+100 % Microsoft 365  ·  Zero External Cost  ·  No Azure Billing Account Required
+
+
+
+Architecture · Setup · Code · Deployment · Automation · Security
+
+0. Feasibility Verdict — Zero External Cost
+
+The following table lists every technology in this plan, where it runs, and its cost status.
+
+
+
+1. Full System Architecture
+1.1 The Three Layers (All M365)
+Every component lives inside your Microsoft 365 tenant. There is no external infrastructure to provision, pay for, or maintain.
+
+
+1.2 Data Flow (No External Calls)
+User opens the KRI SharePoint page → SPFx web part loads inside SharePoint
+Web part authenticates silently using SharePoint context — user is already logged in, no login screen appears
+UI calls Microsoft Graph API directly using MSGraphClientV3 (built into every SPFx web part)
+Graph API reads and writes your SharePoint Lists, sends emails via Outlook, posts Teams messages
+Power Automate flows run on timers and SharePoint list triggers — no code, no servers
+
+1.3 Why No Backend Server Is Needed
+In a standard web app you need a backend server because your API keys must be kept secret. In SPFx inside SharePoint, authentication is handled entirely by your M365 tenant:
+The user is already authenticated into SharePoint when they open the page
+SPFx's MSGraphClientV3 automatically acquires a Graph API access token from SharePoint context — zero code required
+That token only works for this user, in this tenant, with the permissions an admin has approved
+There are no API keys to protect. There is no secret to store. There is no server to run.
+
+2. Prerequisites & One-Time Setup
+2.1 Development Machine — Install These Tools
+All tools are free. Install them once.
+
+
+
+2.2 Microsoft Entra ID — App Registration (Simplified)
+This is the only step performed in the Azure portal UI. It is free — Microsoft Entra ID (formerly Azure AD) is included in every M365 subscription. You are NOT creating Azure resources or enabling billing.
+
+Step 1 — Register the Application
+Navigate to portal.azure.com and sign in with your M365 admin account
+Go to: Microsoft Entra ID → App Registrations → + New Registration
+Name: KRI-Platform
+Supported account types: Accounts in this organisational directory only
+Redirect URI: Single-page application (SPA) → https://{your-sharepoint-domain}.sharepoint.com
+Click Register
+Copy and save: Application (client) ID and Directory (tenant) ID — you will use these in the SPFx web part property bag
+
+Step 2 — Set API Permissions (Delegated Only — No Client Secret)
+
+In your app registration → API permissions → + Add a permission → Microsoft Graph → Delegated permissions
+Add these permissions:
+Sites.ReadWrite.All — read and write SharePoint Lists
+Mail.Send — send email as the signed-in user via Outlook
+ChannelMessage.Send — post messages to Teams channels
+User.Read — read the signed-in user's profile
+User.ReadBasic.All — read basic profile of all users (team member picker)
+Click Grant admin consent for your organisation and confirm Yes
+All five permissions should now show status: Granted for [your org] in green
+
+Step 3 — Expose the API Scope (So SPFx Can Request a Token)
+In your app registration → Expose an API → + Add a scope
+Application ID URI: accept the default (api://{client-id})
+Scope name: access_as_user
+Admin consent display name: Access KRI Platform
+State: Enabled → Add scope
+
+3. SharePoint Lists — Database Setup
+All data is stored in six SharePoint Lists in your existing SharePoint site. SharePoint Lists are your zero-cost database — no SQL Server, no Cosmos DB, no external storage.
+
+3.1 Create the Six Lists
+For each list: go to your SharePoint site → + New → List → Blank list → enter the name exactly as shown.
+
+
+3.2 Column Types for KRI_Clients (Full Schema)
+
+
+4. Phase 1 — SPFx Project Setup
+4.1 Scaffold the Project
+Open a terminal in your projects folder and run:
+
+yo @microsoft/sharepoint
+
+Answer the Yeoman prompts exactly as follows:
+
+
+4.2 Install Dependencies
+cd kri-platform
+npm install @mui/material @mui/icons-material @emotion/react @emotion/styled
+npm install @microsoft/sp-http @microsoft/sp-core-library
+npm install react-router-dom zustand
+
+
+4.3 Complete Folder Structure
+kri-platform/
+├── config/
+│   ├── config.json                 # Add package solution and CDN entries
+│   └── package-solution.json        # skipFeatureDeployment: true
+├── src/webparts/kriPlatform/
+│   ├── KriPlatformWebPart.ts        # SPFx entry point — acquires Graph client
+│   ├── components/
+│   │   ├── App.tsx                  # Root router + MUI ThemeProvider
+│   │   ├── layout/
+│   │   │   ├── AppShell.tsx         # Sidebar navigation + top bar
+│   │   │   └── Sidebar.tsx          # MUI Drawer navigation
+│   │   ├── clients/
+│   │   │   ├── ClientList.tsx       # Client registry — searchable, filterable
+│   │   │   ├── ClientCard.tsx       # Summary card with KRI stage chip
+│   │   │   ├── ClientDetail.tsx     # Full profile view
+│   │   │   └── ClientForm.tsx       # Add / edit client — all 14 fields
+│   │   ├── communications/
+│   │   │   ├── CommThread.tsx       # Timeline-style interaction history
+│   │   │   └── LogCommForm.tsx      # Log new communication form
+│   │   ├── engagements/
+│   │   │   ├── PipelineBoard.tsx    # Kanban board — columns by status
+│   │   │   └── EngagementForm.tsx   # Create / update engagement
+│   │   ├── dashboard/
+│   │   │   └── TeamDashboard.tsx    # KPI cards, targets vs actuals
+│   │   └── shared/
+│   │       ├── KriStageBadge.tsx    # Knowledge / Rapport / Intimacy chip
+│   │       ├── LoadingSpinner.tsx
+│   │       └── ErrorAlert.tsx
+│   ├── services/
+│   │   └── graphApi.ts              # All Graph API calls — no external server
+│   ├── store/
+│   │   └── useStore.ts              # Zustand global state
+│   └── theme/
+│       └── theme.ts                 # Custom MUI theme
+└── sharepoint/solution/             # Built .sppkg file goes here
+
+5. Phase 2 — SPFx Entry Point & Configuration
+5.1 KriPlatformWebPart.ts — SPFx Entry Point
+This is the root of the web part. It acquires the MSGraphClientV3 — which handles all authentication automatically using the SharePoint page context — and passes it into your React application.
+
+import * as React from 'react';
+import * as ReactDom from 'react-dom';
+import { Version } from '@microsoft/sp-core-library';
+import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
+import { MSGraphClientV3 } from '@microsoft/sp-http';
+import App from './components/App';
+
+export interface IKriPlatformWebPartProps {}
+
+export default class KriPlatformWebPart
+  extends BaseClientSideWebPart<IKriPlatformWebPartProps> {
+
+  private _graphClient: MSGraphClientV3;
+
+  public async onInit(): Promise<void> {
+    // SharePoint acquires the token silently — no MSAL code needed
+    this._graphClient =
+      await this.context.msGraphClientFactory.getClient('3');
+    return super.onInit();
+  }
+
+  public render(): void {
+    const element = React.createElement(App, {
+      graphClient: this._graphClient,
+      context: this.context,
+    });
+    ReactDom.render(element, this.domElement);
+  }
+
+  protected get dataVersion(): Version {
+    return Version.parse('1.0');
+  }
+}
+
+5.2 config/package-solution.json
+{
+  "solution": {
+    "name": "kri-platform-client-side-solution",
+    "id": "<generate with: npx -p @microsoft/sp-office-ui-fabric-core guid>",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false
+  },
+  "paths": {
+    "zippedPackage": "solution/kri-platform.sppkg"
+  }
+}
+
+5.3 theme/theme.ts — Material UI Custom Theme
+import { createTheme } from '@mui/material/styles';
+
+const kriTheme = createTheme({
+  palette: {
+    primary:    { main: '#1565C0', light: '#E3F0FC', dark: '#0D47A1' },
+    secondary:  { main: '#00796B', light: '#E0F2F1', dark: '#004D40' },
+    warning:    { main: '#E65100' },
+    background: { default: '#F8F9FA', paper: '#FFFFFF' },
+  },
+  typography: {
+    fontFamily: '"Segoe UI", Arial, sans-serif',
+    h4: { fontWeight: 700 }, h5: { fontWeight: 600 }, h6: { fontWeight: 600 },
+  },
+  shape: { borderRadius: 10 },
+  components: {
+    MuiButton: { styleOverrides: { root: { textTransform: 'none', fontWeight: 600 } } },
+    MuiChip:   { styleOverrides: { root: { fontWeight: 600 } } },
+    MuiCard:   { styleOverrides: { root: { boxShadow: '0 2px 12px rgba(0,0,0,0.07)' } } },
+  },
+});
+
+export default kriTheme;
+
+6. Phase 3 — Graph API Service Layer
+This file replaces the entire Rust backend from the previous plan. Every call that previously went through your Azure server now calls Microsoft Graph API directly from the browser using the MSGraphClientV3. This is secure because the token is issued by your M365 tenant and bound to the signed-in user.
+
+6.1 services/graphApi.ts — Complete Graph API Layer
+import { MSGraphClientV3 } from '@microsoft/sp-http';
+
+// Your SharePoint site ID — get it from:
+// https://graph.microsoft.com/v1.0/sites/{domain}.sharepoint.com:/sites/{sitename}
+const SITE_ID = 'YOUR_SHAREPOINT_SITE_ID';
+
+// ── Clients ────────────────────────────────────────────────────────────
+export async function getClients(graph: MSGraphClientV3) {
+  const res = await graph
+    .api(`/sites/${SITE_ID}/lists/KRI_Clients/items`)
+    .expand('fields')
+    .filter('fields/IsActive eq true')
+    .get();
+  return res.value.map((i: any) => i.fields);
+}
+
+export async function getClient(graph: MSGraphClientV3, id: string) {
+  const res = await graph
+    .api(`/sites/${SITE_ID}/lists/KRI_Clients/items/${id}`)
+    .expand('fields').get();
+  return res.fields;
+}
+
+export async function createClient(graph: MSGraphClientV3, data: any) {
+  return graph
+    .api(`/sites/${SITE_ID}/lists/KRI_Clients/items`)
+    .post({ fields: {
+      Title:                data.fullName,
+      FirstName:            data.firstName,
+      LastName:             data.lastName,
+      CompanyName:          data.companyName,
+      JobTitle:             data.jobTitle,
+      Email:                data.email,
+      Phone:                data.phone,
+      Gender:               data.gender,
+      KRIStage:             data.kriStage,
+      ProjectName:          data.projectName,
+      LinkedInProfile:      data.linkedIn,
+      InstagramAccount:     data.instagram,
+      KRISecondaryContact:  data.secondaryContact,
+      BirthdayDate:         data.birthdayDate,
+      IsActive:             true,
+      DateRegistered:       new Date().toISOString(),
+    }});
+}
+
+export async function updateClient(graph: MSGraphClientV3, id: string, data: any) {
+  return graph
+    .api(`/sites/${SITE_ID}/lists/KRI_Clients/items/${id}/fields`)
+    .patch(data);
+}
+
+export async function updateStage(
+  graph: MSGraphClientV3, id: string,
+  newStage: string, previousStage: string, changedBy: string
+) {
+  // 1. Update the client's stage
+  await graph
+    .api(`/sites/${SITE_ID}/lists/KRI_Clients/items/${id}/fields`)
+    .patch({ KRIStage: newStage });
+  // 2. Log to StageHistory audit list
+  await graph
+    .api(`/sites/${SITE_ID}/lists/KRI_StageHistory/items`)
+    .post({ fields: {
+      Title:         `${id}: ${previousStage} -> ${newStage}`,
+      ClientID:      id,
+      PreviousStage: previousStage,
+      NewStage:      newStage,
+      ChangedDate:   new Date().toISOString(),
+      ChangedBy:     changedBy,
+    }});
+}
+
+export async function archiveClient(graph: MSGraphClientV3, id: string) {
+  return graph
+    .api(`/sites/${SITE_ID}/lists/KRI_Clients/items/${id}/fields`)
+    .patch({ IsActive: false });
+}
+
+// ── Communications ─────────────────────────────────────────────────────
+export async function getComms(graph: MSGraphClientV3, clientId: string) {
+  const res = await graph
+    .api(`/sites/${SITE_ID}/lists/KRI_Communications/items`)
+    .expand('fields')
+    .filter(`fields/ClientID eq '${clientId}'`)
+    .orderby('fields/CommunicationDate desc')
+    .get();
+  return res.value.map((i: any) => i.fields);
+}
+
+export async function logComm(graph: MSGraphClientV3, data: any) {
+  return graph
+    .api(`/sites/${SITE_ID}/lists/KRI_Communications/items`)
+    .post({ fields: {
+      Title:              data.subject,
+      ClientID:           data.clientId,
+      CommunicationType:  data.type,
+      Subject:            data.subject,
+      Notes:              data.notes,
+      CommunicationDate:  new Date().toISOString(),
+      NextFollowUpDate:   data.nextFollowUp,
+    }});
+}
+
+// ── Engagements ────────────────────────────────────────────────────────
+export async function getEngagements(graph: MSGraphClientV3) {
+  const res = await graph
+    .api(`/sites/${SITE_ID}/lists/KRI_Engagements/items`)
+    .expand('fields').get();
+  return res.value.map((i: any) => i.fields);
+}
+
+export async function createEngagement(graph: MSGraphClientV3, data: any) {
+  return graph
+    .api(`/sites/${SITE_ID}/lists/KRI_Engagements/items`)
+    .post({ fields: { ...data } });
+}
+
+// ── Send email via Outlook (Graph API — no SMTP, no server) ────────────
+export async function sendEmail(
+  graph: MSGraphClientV3,
+  to: string, subject: string, body: string
+) {
+  return graph.api('/me/sendMail').post({
+    message: {
+      subject,
+      body: { contentType: 'HTML', content: body },
+      toRecipients: [{ emailAddress: { address: to } }],
+    },
+    saveToSentItems: true,
+  });
+}
+
+7. Phase 4 — React Components
+7.1 components/App.tsx — Root Component
+import React from 'react';
+import { ThemeProvider, CssBaseline } from '@mui/material';
+import { MSGraphClientV3 } from '@microsoft/sp-http';
+import { WebPartContext } from '@microsoft/sp-webpart-base';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import kriTheme from '../theme/theme';
+import AppShell from './layout/AppShell';
+import ClientList from './clients/ClientList';
+import ClientDetail from './clients/ClientDetail';
+import PipelineBoard from './engagements/PipelineBoard';
+import TeamDashboard from './dashboard/TeamDashboard';
+
+interface Props {
+  graphClient: MSGraphClientV3;
+  context: WebPartContext;
+}
+
+export default function App({ graphClient, context }: Props) {
+  return (
+    <ThemeProvider theme={kriTheme}>
+      <CssBaseline />
+      <HashRouter>
+        <AppShell context={context}>
+          <Routes>
+            <Route path='/' element={<Navigate to='/clients' replace />} />
+            <Route path='/clients' element={<ClientList graph={graphClient} />} />
+            <Route path='/clients/:id' element={<ClientDetail graph={graphClient} />} />
+            <Route path='/pipeline' element={<PipelineBoard graph={graphClient} />} />
+            <Route path='/dashboard' element={<TeamDashboard graph={graphClient} />} />
+          </Routes>
+        </AppShell>
+      </HashRouter>
+    </ThemeProvider>
+  );
+}
+
+7.2 components/clients/ClientList.tsx — Client Registry
+import React, { useEffect, useState } from 'react';
+import { Box, TextField, ToggleButton, ToggleButtonGroup,
+         Grid, Typography, Fab, CircularProgress } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import { MSGraphClientV3 } from '@microsoft/sp-http';
+import { getClients } from '../../services/graphApi';
+import ClientCard from './ClientCard';
+import ClientForm from './ClientForm';
+
+export default function ClientList({ graph }: { graph: MSGraphClientV3 }) {
+  const [clients, setClients] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search,  setSearch]  = useState('');
+  const [stage,   setStage]   = useState('All');
+  const [showForm, setShowForm] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    getClients(graph).then(data => { setClients(data); setLoading(false); });
+  };
+  useEffect(load, []);
+
+  const filtered = clients.filter(c => {
+    const matchSearch = `${c.FirstName} ${c.LastName} ${c.CompanyName}`
+      .toLowerCase().includes(search.toLowerCase());
+    const matchStage = stage === 'All' || c.KRIStage === stage;
+    return matchSearch && matchStage;
+  });
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Typography variant='h5' sx={{ mb: 2, fontWeight: 700 }}>
+        Client Registry
+      </Typography>
+      <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+        <TextField size='small' label='Search clients...' value={search}
+          onChange={e => setSearch(e.target.value)} sx={{ width: 280 }} />
+        <ToggleButtonGroup exclusive value={stage}
+          onChange={(_, v) => v && setStage(v)} size='small'>
+          {['All','Knowledge','Rapport','Intimacy'].map(s => (
+            <ToggleButton key={s} value={s}>{s}</ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </Box>
+      {loading ? <CircularProgress /> : (
+        <Grid container spacing={2}>
+          {filtered.map((c, i) => (
+            <Grid item xs={12} sm={6} md={4} key={i}>
+              <ClientCard client={c} />
+            </Grid>
+          ))}
+        </Grid>
+      )}
+      <Fab color='primary' sx={{ position: 'fixed', bottom: 32, right: 32 }}
+        onClick={() => setShowForm(true)}>
+        <AddIcon />
+      </Fab>
+      {showForm && <ClientForm graph={graph}
+        onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load(); }} />}
+    </Box>
+  );
+}
+
+7.3 components/shared/KriStageBadge.tsx
+import { Chip } from '@mui/material';
+
+const STAGE_COLORS: Record<string, { bg: string; color: string }> = {
+  Knowledge: { bg: '#E3F0FC', color: '#1565C0' },
+  Rapport:   { bg: '#E0F2F1', color: '#00796B' },
+  Intimacy:  { bg: '#FFF3E0', color: '#E65100' },
+};
+
+export default function KriStageBadge({ stage }: { stage: string }) {
+  const c = STAGE_COLORS[stage] ?? { bg: '#F5F5F5', color: '#424242' };
+  return (
+    <Chip label={stage} size='small'
+      sx={{ bgcolor: c.bg, color: c.color, fontWeight: 700 }} />
+  );
+}
+
+8. Phase 5 — Power Automate (Replaces Azure Functions)
+Power Automate Standard flows are included in your M365 Business Standard subscription at no extra cost. These four flows replace the Rust Azure Functions from the previous plan entirely. No code, no servers, no billing.
+
+
+8.1 Flow 1 — Birthday Email Check (Daily at 08:00)
+
+
+8.2 Flow 2 — Follow-Up Reminder (Daily at 08:00)
+
+
+8.3 Flow 3 — Welcome New Client Email (Triggered on New Item)
+
+
+8.4 Flow 4 — Stage Change Audit Log
+This flow is optional — stage changes are already logged in StageHistory by the React app's updateStage() call in graphApi.ts. However, a Power Automate flow provides a fully independent audit trail as a backup:
+
+
+9. Phase 6 — SharePoint Deployment
+9.1 Configure Package Settings
+Edit config/package-solution.json — confirm skipFeatureDeployment is true to allow tenant-wide deployment without per-site activation.
+
+9.2 Grant API Permissions in SharePoint Admin
+Go to: SharePoint Admin Centre → Advanced → API access
+Find the pending permission request for KRI-Platform
+Click Approve for each of the five permissions you configured in Entra ID
+Confirm all five show status: Approved
+
+
+9.3 Build and Package
+# Bundle all assets for production (minified, optimised)
+gulp bundle --ship
+
+# Create the .sppkg deployment package
+gulp package-solution --ship
+
+# This produces: sharepoint/solution/kri-platform.sppkg
+
+9.4 Deploy to SharePoint App Catalog
+In the SharePoint Admin Centre, go to: Apps → App Catalog
+Upload kri-platform.sppkg to the Apps for SharePoint library
+When prompted, check 'Make this solution available to all sites in the organisation'
+Click Deploy
+Navigate to your target SharePoint site → Site Contents → + New → App → KRI Platform
+Edit the page where you want the app → click + to add a web part → find KRI Platform → Save the page
+
+
+10. Phase 7 — Security
+10.1 Security Model
+The M365-native architecture is inherently more secure than the previous plan because there are no secrets to protect, no server to harden, and no external attack surface. Every security concern is handled by Microsoft:
+
+
+10.2 SharePoint Permission Recommendations
+Create a dedicated SharePoint Security Group called 'KRI Platform Users'
+Add only authorised KCC team members to this group
+Grant this group 'Contribute' access to the KRI SharePoint site (they can read and write, but not manage settings)
+Grant site owners 'Full Control' to manage list structure and permissions
+Do NOT grant 'Everyone' or 'Everyone except external users' access to the KRI site
+
+11. Phase 8 — Testing Strategy
+11.1 Local SPFx Testing
+# Start the local SPFx dev server
+gulp serve
+
+# Then open the SharePoint Workbench:
+# https://{your-site}.sharepoint.com/_layouts/15/workbench.aspx
+
+# You can test all Graph API calls against your real SharePoint Lists
+# directly from the Workbench — no mock server needed
+
+11.2 Graph API Validation
+Use the Microsoft Graph Explorer at developer.microsoft.com/graph/graph-explorer to validate all API queries before adding them to graphApi.ts
+Sign in with your M365 account to test against real data
+Use a separate SharePoint test site with empty lists to run integration tests without touching production data
+
+11.3 Power Automate Flow Testing
+Each flow has a built-in Test button — use this before enabling the flow
+Test the Birthday flow by temporarily setting a client's BirthdayDate to today, triggering the flow manually, and confirming the email arrives
+Test the Welcome flow by creating a test client record and confirming the welcome email is received within 60 seconds
+Check the Power Automate run history for each flow to see execution logs and errors
+
+12. Build Order & Master Checklist
+Follow this exact sequence. Each phase depends on the previous one. Check each item off as you complete it.
+
+
+13. Troubleshooting Guide
+
+14. Ongoing Maintenance — Zero Cost
+Because this architecture has no external infrastructure, ongoing maintenance is minimal and entirely free.
+
+
+
+15. Final Notes
+This implementation plan delivers the complete KRI Platform — all screens, all data, all automation — using exclusively what your Microsoft 365 Business Standard subscription already provides. The architecture is:
+
+100% inside your M365 tenant — no external accounts, no external servers
+Zero additional cost — every component is covered by your existing M365 subscription
+Zero secrets or credentials to manage — authentication is handled entirely by Microsoft
+Production-ready — SPFx + direct Graph API is Microsoft's own recommended pattern for M365 business apps
+Low maintenance — no infrastructure to manage, Power Automate flows require no code changes
+
+
+— End of Implementation Plan —
+
+--- TABLE 1 ---
+Stack
+React 18 + Material UI v5  ·  SPFx 1.18  ·  Microsoft Graph API  ·  SharePoint Lists  ·  Power Automate  ·  Microsoft Entra ID
+
+--- TABLE 2 ---
+ℹ  ✔  CONFIRMED — This entire platform runs exclusively inside your existing Microsoft 365 subscription. No Azure billing account is required. No Docker containers. No external servers. No third-party services.
+
+--- TABLE 3 ---
+Technology | Role | Where It Lives | Cost
+React + Material UI v5 | Frontend UI | SPFx web part inside SharePoint | ✔ FREE — Included in M365
+SPFx 1.18 | App host / deployment | SharePoint App Catalog | ✔ FREE — Included in M365
+Microsoft Graph API | Data highway | Microsoft cloud (your tenant) | ✔ FREE — Included in M365
+SharePoint Lists × 6 | Database / storage | SharePoint (your tenant) | ✔ FREE — Included in M365
+Microsoft Entra ID | Auth / SSO | Your M365 tenant | ✔ FREE — Included in M365
+Power Automate (Standard) | Automation / scheduled jobs | Power Automate (your tenant) | ✔ FREE — Included in M365 Business Standard
+GitHub (public repo) | CI / version control | github.com (free tier) | ✔ FREE — Free public or private repos
+Azure Container Apps | NOT USED in this plan | Removed entirely | — Eliminated
+Azure Container Registry | NOT USED in this plan | Removed entirely | — Eliminated
+Azure Key Vault | NOT USED in this plan | Removed entirely | — Eliminated
+Azure Functions (Rust) | NOT USED in this plan | Replaced by Power Automate | — Eliminated
+
+--- TABLE 4 ---
+ℹ  The Rust backend from the previous plan has been completely removed. SPFx web parts natively call Microsoft Graph API directly from the browser using a token issued by SharePoint — no external API server is needed. Power Automate replaces all scheduled automation jobs.
+
+--- TABLE 5 ---
+Layer | Technology | Hosted On | Responsibility
+Layer 1 — UI | React + Material UI v5 (SPFx) | SharePoint (Microsoft CDN) | All screens, forms, dashboards, navigation
+Layer 2 — Data | Microsoft Graph API (MSGraphClientV3) | Your M365 tenant (browser calls) | Read / write SharePoint Lists, send emails, post Teams messages
+Layer 3 — Storage | SharePoint Lists × 6 | SharePoint (your M365 tenant) | KRI_Clients, Communications, Engagements, Automations, Users, StageHistory
+Layer 4 — Automation | Power Automate (Standard flows) | Power Automate (your M365 tenant) | Birthday emails, follow-up reminders, welcome emails, stage-change logging
+
+--- TABLE 6 ---
+ℹ  This is the architecture Microsoft recommends for all internal M365 business applications. SPFx + direct Graph API calls is the documented, supported, production-proven pattern for exactly this use case.
+
+--- TABLE 7 ---
+Tool | Install Command / URL | Purpose
+Node.js 18 + LTS | https://nodejs.org — download the LTS installer | SPFx toolchain, Yeoman, npm
+Yeoman + SPFx Generator | npm install -g yo @microsoft/generator-sharepoint | Scaffold the SPFx project
+gulp-cli | npm install -g gulp-cli | Build and package SPFx
+VSCode | https://code.visualstudio.com | Editor
+VSCode Extensions | ESLint, Prettier, vscode-icons | Developer experience
+
+--- TABLE 8 ---
+ℹ  Rust, Docker, and the Azure CLI from the previous plan are NOT required. They have been completely removed from this architecture.
+
+--- TABLE 9 ---
+ℹ  This plan uses DELEGATED permissions only. There is no application identity, no client secret, and nothing to store or rotate. The signed-in user's own M365 identity is used for every operation.
+
+--- TABLE 10 ---
+List Name | Purpose | Key Columns to Add
+KRI_Clients | Master client registry — one item per client | FirstName, LastName, CompanyName, JobTitle, Email, Phone, Gender, KRIStage, ProjectName, LinkedInProfile, InstagramAccount, KRISecondaryContact, BirthdayDate, IsActive, DateRegistered, AssignedTo
+KRI_Communications | Log of every interaction with a client | ClientID, CommunicationType, Subject, Notes, CommunicationDate, LoggedBy, NextFollowUpDate
+KRI_Engagements | Pipeline / project engagements | ClientID, EngagementTitle, Stage, Value, StartDate, ExpectedCloseDate, Notes, AssignedTo
+KRI_Automations | Configuration settings for Power Automate flows | AutomationType, IsEnabled, LastRunDate, Configuration
+KRI_Users | KCC team members using the platform | UserEmail, DisplayName, Role, IsActive
+KRI_StageHistory | Audit log of all KRI stage changes | ClientID, PreviousStage, NewStage, ChangedDate, ChangedBy
+
+--- TABLE 11 ---
+Column Name | SharePoint Type | Notes
+Title (built-in) | Single line of text | Use as FullName — rename display name to 'Full Name'
+FirstName | Single line of text | 
+LastName | Single line of text | 
+CompanyName | Single line of text | 
+JobTitle | Single line of text | 
+Email | Single line of text | 
+Phone | Single line of text | 
+Gender | Choice | Choices: Male, Female, Other, Prefer not to say
+KRIStage | Choice | Choices: Knowledge, Rapport, Intimacy — ADD INDEX to this column
+ProjectName | Single line of text | 
+LinkedInProfile | Hyperlink or Picture | 
+KRISecondaryContact | Single line of text | 
+BirthdayDate | Date and Time | Date only (no time needed)
+IsActive | Yes/No | Default: Yes
+DateRegistered | Date and Time | 
+AssignedTo | Person or Group | Single selection
+
+--- TABLE 12 ---
+ℹ  After creating the KRI_Clients list, go to List Settings → Indexed Columns → Create a new index on KRIStage. This prevents throttling when the list grows beyond 5,000 items.
+
+--- TABLE 13 ---
+Prompt | Your Answer
+What is your solution name? | kri-platform
+Which type of client-side component? | WebPart
+What is your Web Part name? | KriPlatform
+Which framework? | React
+
+--- TABLE 14 ---
+ℹ  Add 'skipLibCheck': true to tsconfig.json to prevent @emotion type conflicts with the SPFx bundler. Also set 'externals': {} in config/config.json to avoid duplicate React instances.
+
+--- TABLE 15 ---
+ℹ  Access Power Automate at: flow.microsoft.com — sign in with your M365 account. All flows you create will appear under My Flows and run in your tenant.
+
+--- TABLE 16 ---
+Step | Configuration
+Trigger | Recurrence — Interval: 1, Frequency: Day, At: 08:00 your timezone
+Action 1 | SharePoint — Get items: Site = your site, List = KRI_Clients, Filter Query: IsActive eq 1
+Action 2 | Apply to each (loop over the items returned)
+Action 3 (inside loop) | Condition: formatDateTime(items('Apply_to_each')?['BirthdayDate'], 'MM-dd') is equal to formatDateTime(utcNow(), 'MM-dd')
+Action 4 — If Yes | Office 365 Outlook — Send an email (V2): To = Email field, Subject = 'Happy Birthday!', Body = personalised HTML message using First Name
+Save & Test | Toggle the flow On. Test by temporarily setting a client BirthdayDate to today.
+
+--- TABLE 17 ---
+Step | Configuration
+Trigger | Recurrence — Interval: 1, Frequency: Day, At: 08:00 your timezone
+Action 1 | SharePoint — Get items from KRI_Communications, Filter Query: NextFollowUpDate eq 'today's date' and use formatDateTime(utcNow(),'yyyy-MM-dd') as the dynamic value
+Action 2 | Apply to each (loop over due communications)
+Action 3 (inside loop) | SharePoint — Get item from KRI_Clients using the ClientID field to look up the full client record
+Action 4 (inside loop) | Office 365 Outlook — Send email to the AssignedTo user: Subject = 'Follow-up due: [Client Name]', Body = summary of the communication and client details
+Optional Action 5 | Microsoft Teams — Post a message in your KRI channel as an additional notification
+
+--- TABLE 18 ---
+Step | Configuration
+Trigger | SharePoint — When an item is created: Site = your site, List = KRI_Clients
+Action 1 | Condition: Is IsActive equal to true (skip if a draft or inactive client was added)
+Action 2 — If Yes | Office 365 Outlook — Send an email: To = Email field from the trigger, Subject = 'Welcome to KRI!', Body = personalised HTML welcome message using FirstName
+Action 3 — If Yes | SharePoint — Create item in KRI_Automations to log that a welcome email was sent for audit purposes
+
+--- TABLE 19 ---
+Step | Configuration
+Trigger | SharePoint — When an item is modified: Site = your site, List = KRI_Clients
+Action 1 | Condition: check if KRIStage has changed using triggerBody()?['KRIStage'] compared to the previous value
+Action 2 — If Yes | SharePoint — Create item in KRI_StageHistory with ClientID, the old stage, the new stage, the timestamp, and the modifier's name (from Modified By field)
+
+--- TABLE 20 ---
+ℹ  This step is what allows the SPFx web part to silently acquire tokens for Graph API on behalf of your logged-in users. Without this approval, API calls will return 403 errors.
+
+--- TABLE 21 ---
+ℹ  Your KRI Platform is now live inside SharePoint. All team members with access to the page can use the full application immediately — no installs, no logins, no additional setup.
+
+--- TABLE 22 ---
+Security Concern | How It Is Handled | Who Is Responsible
+Authentication | SPFx uses the logged-in SharePoint user identity — no separate login | Microsoft (M365)
+Token issuance & validation | MSGraphClientV3 handles token acquisition and refresh silently | Microsoft (M365)
+Data access control | SharePoint site permissions — only users with site access can see data | You (SharePoint Admin)
+API permission scope | Only the five delegated permissions you approved in Entra ID are usable | Microsoft Entra ID
+Secrets management | There are no secrets — no client secret, no API key, nothing to store or rotate | N/A — eliminated
+HTTPS enforcement | SharePoint forces HTTPS on all pages — no configuration needed | Microsoft (M365)
+Data residency | All data stays in your M365 tenant — no data leaves Microsoft's servers | Microsoft (M365)
+
+--- TABLE 23 ---
+# | Task | Done When...
+1 | Entra ID app registration complete | Client ID and Tenant ID saved securely
+2 | All 5 API permissions granted and admin-consented | All five show 'Granted for [org]' in green in Entra ID
+3 | access_as_user scope created | Scope visible under Expose an API in Entra ID
+4 | All 6 SharePoint Lists created | All lists visible in Site Contents
+5 | All columns added to KRI_Clients (17 columns) | All column types match the schema table in Section 3
+6 | KRIStage column indexed | Index visible under List Settings → Indexed Columns
+7 | SharePoint Site ID retrieved | Site ID string copied from Graph Explorer — format: {guid},{guid},{guid}
+8 | SITE_ID constant set in graphApi.ts | getClients() returns data in browser console
+9 | yo @microsoft/sharepoint scaffolded | SPFx project builds with no errors: gulp bundle
+10 | MUI installed and theme.ts configured | MUI components render correctly in SharePoint Workbench
+11 | graphApi.ts complete with all CRUD operations | All Graph API calls succeed in the Workbench
+12 | ClientList, ClientCard, ClientForm implemented | Client registry screen renders and loads data
+13 | ClientDetail and CommThread implemented | Client profile and communication history render correctly
+14 | PipelineBoard Kanban implemented | Engagements appear in correct stage columns
+15 | TeamDashboard implemented | KPI cards show correct data
+16 | SharePoint API access permission approved in Admin Centre | No 401 errors when web part calls Graph API
+17 | gulp bundle --ship and gulp package-solution --ship | .sppkg file generated in sharepoint/solution/
+18 | .sppkg uploaded to App Catalog and deployed | Solution visible in App Catalog without errors
+19 | Web part added to SharePoint page | Full app renders inside SharePoint for all team members
+20 | Power Automate — Birthday flow created and enabled | Test email received when BirthdayDate = today
+21 | Power Automate — Follow-Up Reminder flow enabled | Reminder email received for a communication due today
+22 | Power Automate — Welcome New Client flow enabled | Welcome email received within 60 sec of creating a test client
+23 | End-to-end test: create client, log comm, update stage | All data persists in SharePoint Lists, StageHistory logged
+
+--- TABLE 24 ---
+Symptom | Most Likely Cause | Fix
+401 Unauthorised from Graph API calls | SharePoint Admin API access not yet approved | Go to SharePoint Admin Centre → Advanced → API access → approve all pending permissions
+403 Forbidden from Graph API | Admin consent not granted in Entra ID | Go to Entra ID → App Registration → API permissions → Grant admin consent
+SPFx web part shows blank white box | React crash — check browser console | Open F12 → Console for the error. Usually a missing prop, undefined field, or GraphClient not passed down correctly
+Graph API returns empty value array | SharePoint list has Threshold View exceeded (5,000 item limit) | Add indexed columns as described in Section 3 — index KRIStage, IsActive, and CommunicationDate
+gulp bundle fails with webpack error | @emotion/react conflict with SPFx bundler | Add 'skipLibCheck': true to tsconfig.json and set 'externals': {} in config/config.json
+Power Automate flow never triggers | Flow is turned Off or trigger configuration wrong | Check that the flow is toggled On in flow.microsoft.com; verify trigger configuration matches list name exactly
+Graph API returns 404 for list items | List name in URL does not match SharePoint internal name | In SharePoint, go to List Settings — check the List Name exactly. It is case sensitive. Spaces are encoded as %20.
+MSGraphClientV3 is undefined in component | graphClient not passed as prop | Confirm graphClient flows from KriPlatformWebPart.ts → App.tsx → every component that needs it
+Welcome email not triggered by new client | Power Automate flow connection not authorised | In the flow editor, re-authorise the SharePoint and Outlook connections by clicking each connector and signing in
+
+--- TABLE 25 ---
+Task | Frequency | How
+SPFx updates (new features / bug fixes) | On demand | Edit code in VSCode → gulp bundle --ship → gulp package-solution --ship → re-upload .sppkg to App Catalog → click Upgrade
+npm dependency updates | Every 3–6 months | npm outdated in project folder → npm update → test in Workbench → redeploy
+Power Automate flow maintenance | On demand | Edit flows directly in flow.microsoft.com — no code, no redeploy, changes take effect immediately
+SharePoint List schema changes (new columns) | On demand | Add columns directly in SharePoint List Settings → update graphApi.ts to include the new field → redeploy .sppkg
+Entra ID app registration | When permissions change | Add new delegated permissions in Entra ID → grant admin consent → approve in SharePoint Admin Centre API access page
+User access management | On demand | Add or remove users from the SharePoint Security Group in SharePoint Admin Centre
+
+--- TABLE 26 ---
+ℹ  There are no servers to patch, no Docker images to rebuild, no Azure bills to monitor, no secrets to rotate, and no infrastructure to scale. Your only recurring maintenance activity is SPFx package updates when you add new features.
+
+--- TABLE 27 ---
+Every component of this architecture is production-proven, actively maintained,
+and supported by Microsoft's own documentation. You are building on the right foundation.

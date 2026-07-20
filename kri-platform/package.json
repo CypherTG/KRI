@@ -1,0 +1,46 @@
+{
+  "name": "kairos-platform",
+  "version": "0.0.1",
+  "private": true,
+  "main": "lib/index.js",
+  "engines": {
+    "node": ">=16.13.0 <17.0.0 || >=18.17.1 <19.0.0"
+  },
+  "scripts": {
+    "prebuild": "node scripts/sync-system-prompt.js",
+    "build": "gulp bundle",
+    "clean": "gulp clean",
+    "test": "gulp test"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.11.0",
+    "@emotion/styled": "^11.11.0",
+    "@microsoft/sp-core-library": "1.18.2",
+    "@microsoft/sp-http": "1.18.2",
+    "@microsoft/sp-lodash-subset": "1.18.2",
+    "@microsoft/sp-office-ui-fabric-core": "1.18.2",
+    "@microsoft/sp-property-pane": "1.18.2",
+    "@microsoft/sp-webpart-base": "1.18.2",
+    "@mui/icons-material": "^5.15.0",
+    "@mui/material": "^5.15.0",
+    "country-state-city": "^3.2.1",
+    "react": "17.0.1",
+    "react-dom": "17.0.1",
+    "react-router-dom": "^6.20.0",
+    "tslib": "2.3.1",
+    "xlsx": "^0.18.5",
+    "zustand": "^4.4.0"
+  },
+  "devDependencies": {
+    "@microsoft/eslint-config-spfx": "1.18.2",
+    "@microsoft/eslint-plugin-spfx": "1.18.2",
+    "@microsoft/rush-stack-compiler-4.7": "0.1.0",
+    "@microsoft/sp-build-web": "1.18.2",
+    "@microsoft/sp-module-interfaces": "1.18.2",
+    "@types/react": "17.0.45",
+    "@types/react-dom": "17.0.17",
+    "@types/webpack-env": "1.18.0",
+    "eslint": "8.7.0",
+    "gulp": "4.0.2"
+  }
+}

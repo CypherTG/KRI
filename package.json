@@ -1,0 +1,10 @@
+{
+  "name": "kri-workspace",
+  "private": true,
+  "scripts": {
+    "serve:all": "powershell -ExecutionPolicy Bypass -File .\\scripts\\start-both-serves.ps1"
+  },
+  "dependencies": {
+    "docx": "^9.7.1"
+  }
+}

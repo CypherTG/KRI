@@ -1,0 +1,59 @@
+# Dependencies
+**/node_modules/
+**/.psmodules/
+**/.tools/
+**/psmodules/
+
+# Build output
+**/dist/
+**/release/
+**/temp/
+**/lib/
+**/debug/
+
+# Auth / secrets
+.dataverse-browser-auth-status.json
+.devicecode.txt
+.powerplatform-auth-status.json
+.powerplatform-auth-token.json
+
+# Office temp files
+~$*
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
+
+# SharePoint built packages
+*.sppkg
+
+# Binary / document files
+*.pdf
+*.docx
+*.xlsx
+*.csv
+*.jpeg
+
+# Azure config
+.azure/
+
+# Stray files
+npm
+cd
+powershell
+pwshprofile/
+
+# Screenshots
+Screenshot*.png
+Screenshot*.jpeg
+Screenshot*.jpg

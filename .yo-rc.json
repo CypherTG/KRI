@@ -1,0 +1,11 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "solutionName": "kri-platform",
+    "environment": "spo",
+    "componentType": "WebPart",
+    "framework": "react",
+    "componentName": "KriPlatform",
+    "isCreatingSolution": true,
+    "whichFolder": "subdir"
+  }
+}

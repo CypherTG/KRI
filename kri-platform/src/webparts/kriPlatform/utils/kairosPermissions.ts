@@ -1,0 +1,119 @@
+import { IClient } from '../services/graphApi';
+import { KairosContactAccessRequest } from '../services/sharepointProvisioning';
+
+type Principal = {
+  Id?: number | string;
+  ID?: number | string;
+  Title?: string;
+  DisplayName?: string;
+  Name?: string;
+  Email?: string;
+  EMail?: string;
+  LoginName?: string;
+  email?: string;
+  loginName?: string;
+  displayName?: string;
+};
+
+function normalize(value: any): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function principalTokens(value: any): string[] {
+  if (!value) return [];
+  if (typeof value === 'string' || typeof value === 'number') return [normalize(value)].filter(Boolean);
+  const raw = [
+    value.Id,
+    value.ID,
+    value.LookupId,
+    value.LookupValue,
+    value.Title,
+    value.DisplayName,
+    value.Name,
+    value.Email,
+    value.EMail,
+    value.LoginName,
+    value.email,
+    value.loginName,
+    value.displayName,
+  ];
+  return raw.map(normalize).filter(Boolean);
+}
+
+export function getPrincipalKey(principal: Principal | null | undefined): string {
+  if (!principal) return '';
+  return normalize(principal.Email || principal.email || principal.LoginName || principal.loginName || principal.Id || principal.ID || principal.Title || principal.displayName);
+}
+
+export function getClientOwnerLabel(client: Partial<IClient>): string {
+  const owner = client.KCCContactPerson as any;
+  const tokens = [
+    owner?.Title,
+    owner?.LookupValue,
+    owner?.DisplayName,
+    owner?.Name,
+    owner?.Email,
+    owner?.LoginName,
+  ];
+  return String(tokens.find((entry) => entry && String(entry).trim()) || '').trim();
+}
+
+export function isClientOwnedByPrincipal(client: Partial<IClient>, principal: Principal | null | undefined): boolean {
+  if (!client || !principal) return false;
+  const principalValues = new Set(principalTokens(principal));
+  if (!principalValues.size) return false;
+
+  const clientOwnerSources = [
+    client.KCCContactPersonId,
+    client.KRISecondaryContactId,
+    client.AuthorId,
+    client.KCCContactPerson,
+    client.KRISecondaryContact,
+    client.Author,
+  ];
+  const clientOwners = clientOwnerSources.reduce((all, source) => all.concat(principalTokens(source)), [] as string[]);
+
+  return clientOwners.some((token) => principalValues.has(token));
+}
+
+export function approvedClientIdsForRequestUser(
+  requests: KairosContactAccessRequest[],
+  principal: Principal | null | undefined,
+): Set<string> {
+  const key = getPrincipalKey(principal);
+  if (!key) return new Set();
+  return new Set(
+    requests
+      .filter((request) => request.Status === 'Approved')
+      .filter((request) => request.RequesterKey === key || normalize(request.RequesterEmail) === key)
+      .map((request) => String(request.ClientID))
+      .filter(Boolean)
+  );
+}
+
+export function latestAccessRequestForClient(
+  requests: KairosContactAccessRequest[],
+  clientId: string,
+): KairosContactAccessRequest | null {
+  const matches = requests
+    .filter((request) => String(request.ClientID) === String(clientId))
+    .sort((left, right) => new Date(right.RequestedAt || 0).getTime() - new Date(left.RequestedAt || 0).getTime());
+  return matches[0] || null;
+}
+
+export function canViewClient(
+  client: Partial<IClient>,
+  principal: Principal | null | undefined,
+  isAdmin: boolean,
+  approvedClientIds: Set<string>,
+): boolean {
+  return Boolean(client || principal || isAdmin || approvedClientIds);
+}
+
+export function canEditClient(
+  client: Partial<IClient>,
+  principal: Principal | null | undefined,
+  isAdmin: boolean,
+): boolean {
+  return Boolean(client || principal || isAdmin);
+}
