@@ -198,8 +198,9 @@ Stop-PortListener -Port $gemsPort
 Assert-PortFree -Port $kairosPort -Name 'KAIROS'
 Assert-PortFree -Port $gemsPort -Name 'GEMS'
 
-Remove-GeneratedArtifacts -WorkDir $kairos -Name 'KAIROS'
-Remove-GeneratedArtifacts -WorkDir $gems -Name 'GEMS'
+# Preserve generated manifests and bundles for immediate browser availability
+# Remove-GeneratedArtifacts -WorkDir $kairos -Name 'KAIROS'
+# Remove-GeneratedArtifacts -WorkDir $gems -Name 'GEMS'
 
 Invoke-TrustedCert -WorkDir $kairos -Name 'KAIROS'
 Invoke-TrustedCert -WorkDir $gems -Name 'GEMS'
