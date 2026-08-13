@@ -21,11 +21,15 @@ import { useNavigate } from 'react-router-dom';
 import {
   getCurrentUserProfile,
   getCurrentUserPhotoUrl,
+  getClients,
+  IClient,
   IEngagement,
   IKRIUser,
 } from '../../services/graphApi';
 import { getMyKriDataset } from '../../services/kairosScopedData';
+import { isClientOwnedByPrincipal } from '../../utils/kairosPermissions';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import PeopleIcon from '@mui/icons-material/People';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import StarIcon from '@mui/icons-material/Star';
 
@@ -67,6 +71,7 @@ export default function UserProfile({ context }: Props) {
   const borderColor = isDark ? '#31404f' : '#F0F2F5';
 
   const [profile, setProfile] = useState<IKRIUser | null>(null);
+  const [myClients, setMyClients] = useState<IClient[]>([]);
   const [myEngagements, setMyEngagements] = useState<IEngagement[]>([]);
   const [photoUrl, setPhotoUrl] = useState('');
   const [loading, setLoading] = useState(true);
@@ -80,10 +85,12 @@ export default function UserProfile({ context }: Props) {
     .slice(0, 5);
 
   useEffect(() => {
-    Promise.all([getMyKriDataset(context), getCurrentUserProfile(context, userEmail)])
-      .then(([dataset, prof]) => {
+    Promise.all([getMyKriDataset(context), getClients(context), getCurrentUserProfile(context, userEmail)])
+      .then(([dataset, clients, prof]) => {
         setProfile(prof);
         setMyEngagements(dataset.engagements);
+        const mine = clients.filter((c) => isClientOwnedByPrincipal(c, context.pageContext.user));
+        setMyClients(mine);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -111,6 +118,7 @@ export default function UserProfile({ context }: Props) {
     );
   }
 
+  const targetClients = profile?.TargetClients || 0;
   const targetDeals = profile?.TargetDeals || 0;
   const wonDeals = myEngagements.filter((e) => e.Stage === 'Won').length;
   const wonValue = myEngagements
@@ -118,6 +126,7 @@ export default function UserProfile({ context }: Props) {
     .reduce((a, e) => a + (Number(e.ActualValue) || Number(e.EstimatedValue) || 0), 0);
 
   const STAT_CARDS = [
+    { label: 'My Contacts', value: myClients.length, color: '#6757EF', icon: <PeopleIcon /> },
     { label: 'Active Deals', value: myEngagements.filter((e) => e.Stage === 'Draft' || e.Stage === 'Submitted').length, color: '#FF9800', icon: <TrendingUpIcon /> },
     { label: 'Deals Won', value: wonDeals, color: '#00BFA5', icon: <EmojiEventsIcon /> },
     { label: 'Won Revenue', value: `$${wonValue >= 1000 ? `${(wonValue / 1000).toFixed(1)}k` : wonValue}`, color: '#F06292', icon: <StarIcon />, isString: true },
@@ -172,14 +181,15 @@ export default function UserProfile({ context }: Props) {
               </Box>
             </Box>
 
-            {targetDeals > 0 ? (
+            {(targetClients > 0 || targetDeals > 0) ? (
               <Box sx={{ display: 'flex', justifyContent: 'space-around', pt: 2, borderTop: `1px solid ${borderColor}` }}>
+                {targetClients > 0 && <TargetRing value={myClients.length} target={targetClients} color="#6757EF" label="Contacts Target" />}
                 {targetDeals > 0 && <TargetRing value={wonDeals} target={targetDeals} color="#00BFA5" label="Deals Won Target" />}
               </Box>
             ) : (
               <Box sx={{ pt: 2, borderTop: `1px solid ${borderColor}` }}>
                 <Typography sx={{ fontSize: '0.82rem', color: textSoft }}>
-                  No deal targets configured yet. Ask your admin to set targets for your account.
+                  No targets configured yet. Ask your admin to set targets for your account.
                 </Typography>
               </Box>
             )}

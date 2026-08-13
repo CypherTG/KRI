@@ -58,6 +58,24 @@ export function getClientOwnerLabel(client: Partial<IClient>): string {
   return String(tokens.find((entry) => entry && String(entry).trim()) || '').trim();
 }
 
+export function getClientCreatorLabel(client: Partial<IClient>): string {
+  const author = client.Author as any;
+  if (author) {
+    const tokens = [
+      author.Title,
+      author.LookupValue,
+      author.DisplayName,
+      author.Name,
+      author.Email,
+      author.LoginName,
+    ];
+    const label = String(tokens.find((entry) => entry && String(entry).trim()) || '').trim();
+    if (label) return label;
+  }
+  if (client.AuthorId) return `User #${client.AuthorId}`;
+  return '';
+}
+
 export function isClientOwnedByPrincipal(client: Partial<IClient>, principal: Principal | null | undefined): boolean {
   if (!client || !principal) return false;
   const principalValues = new Set(principalTokens(principal));
@@ -107,7 +125,7 @@ export function canViewClient(
   isAdmin: boolean,
   approvedClientIds: Set<string>,
 ): boolean {
-  return Boolean(client || principal || isAdmin || approvedClientIds);
+  return true;
 }
 
 export function canEditClient(
@@ -115,5 +133,6 @@ export function canEditClient(
   principal: Principal | null | undefined,
   isAdmin: boolean,
 ): boolean {
-  return Boolean(client || principal || isAdmin);
+  if (isAdmin) return true;
+  return isClientOwnedByPrincipal(client, principal);
 }

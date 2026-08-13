@@ -15,7 +15,7 @@ import {
   IStageChange,
 } from './graphApi';
 import { getContactAccessRequestsForUser, KairosContactAccessRequest } from './sharepointProvisioning';
-import { approvedClientIdsForRequestUser, canViewClient, isClientOwnedByPrincipal } from '../utils/kairosPermissions';
+import { approvedClientIdsForRequestUser, canEditClient, canViewClient, isClientOwnedByPrincipal } from '../utils/kairosPermissions';
 
 export interface KairosAccessContext {
   siteUser: any;
@@ -121,7 +121,7 @@ export function scopeVisibleClients(clients: IClient[], access: KairosAccessCont
 }
 
 export function scopeEditableClients(clients: IClient[], access: KairosAccessContext): IClient[] {
-  return clients;
+  return clients.filter((client) => canEditClient(client, access.siteUser, access.isAdmin));
 }
 
 export async function getVisibleClients(context: WebPartContext): Promise<IClient[]> {

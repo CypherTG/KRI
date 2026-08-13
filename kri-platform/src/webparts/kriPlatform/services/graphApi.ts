@@ -72,10 +72,11 @@ async function getJson(context: WebPartContext, url: string): Promise<any> {
   throw lastError || new Error(`[SPREST] GET ${safeUrl} failed`);
 }
 
-async function getListItems(context: WebPartContext, listName: string, filter?: string): Promise<any[]> {
+async function getListItems(context: WebPartContext, listName: string, filter?: string, expand?: string): Promise<any[]> {
   const webUrl = resolveKriDataSiteUrl(context);
   let url = `${listUrl(webUrl, listName)}/items?$top=5000`;
   if (filter) url += `&$filter=${filter}`;
+  if (expand) url += `&$expand=${expand}`;
   const data = await getJson(context, url);
   return extractRestArray(data).map((item: any) => ({ ...item, Id: item.Id, ID: String(item.Id) }));
 }
@@ -537,11 +538,11 @@ export async function resolveSharePointUserPhotoUrl(context: WebPartContext, use
 export async function resolveSharePointUserPhotoDataUrl(context: WebPartContext, user: Partial<ISiteUser> | any, profile?: Record<string, string>): Promise<string> {
   const webUrl = resolveKriDataSiteUrl(context);
   const accountNames = [
-    user?.LoginName,
     user?.Email,
+    user?.LoginName,
     user?.Title,
-    user?.UserAccount?.LoginName,
     user?.UserAccount?.Email,
+    user?.UserAccount?.LoginName,
     user?.UserAccount?.Title,
     profile?.['AccountName'],
     profile?.['SPS-AccountName'],
@@ -562,15 +563,11 @@ export async function resolveSharePointUserPhotoDataUrl(context: WebPartContext,
   }
 
   const directProfilePhoto = profile ? extractProfilePhotoUrl(webUrl, profile) : '';
-  if (directProfilePhoto) {
-    const dataUrl = await fetchImageDataUrl(directProfilePhoto);
-    if (dataUrl) return dataUrl;
-  }
+  if (directProfilePhoto) return directProfilePhoto;
 
   for (const accountName of accountNames) {
-    const candidate = buildFallbackUserPhotoUrl(webUrl, accountName);
-    const dataUrl = await fetchImageDataUrl(candidate);
-    if (dataUrl) return dataUrl;
+    const directUrl = buildFallbackUserPhotoUrl(webUrl, accountName);
+    if (directUrl) return directUrl;
   }
 
   return '';
@@ -580,52 +577,40 @@ export async function getCurrentUserPhotoUrl(context: WebPartContext): Promise<s
   const webUrl = resolveKriDataSiteUrl(context);
   const loginName = context.pageContext.user.loginName || '';
   const email = context.pageContext.user.email || '';
-  const displayName = context.pageContext.user.displayName || '';
   const cacheKey = typeof window !== 'undefined' ? getPhotoCacheKey(context) : '';
 
   if (cacheKey && typeof window !== 'undefined') {
     const cached = window.sessionStorage.getItem(cacheKey) || window.localStorage.getItem(cacheKey) || '';
-    if (cached) return cached;
+    if (cached && !cached.startsWith('blob:') && !cached.startsWith('data:')) return cached;
+    if (cached) {
+      window.sessionStorage.removeItem(cacheKey);
+      window.localStorage.removeItem(cacheKey);
+    }
   }
 
-  const candidates: string[] = [];
-
-  try {
-    const graphPhoto = await getGraphCurrentUserPhotoUrl(context);
-    if (graphPhoto) candidates.push(graphPhoto);
-  } catch {
-  }
-
-  try {
-    const myProps = await getJson(context, `${webUrl}/_api/SP.UserProfiles.PeopleManager/GetMyProperties`);
-    const resolved = extractProfilePhotoUrl(webUrl, myProps);
-    if (resolved) candidates.push(resolved);
-  } catch {
-  }
-
-  for (const accountName of [loginName, email, displayName]) {
-    if (!accountName) continue;
+  const graphAccounts = [loginName, email].filter(Boolean);
+  for (const account of graphAccounts) {
     try {
-      const props = await getUserProfileProperties(context, accountName);
-      const resolved = extractProfilePhotoUrl(webUrl, props);
-      if (resolved) candidates.push(resolved);
-    } catch {
-    }
+      const graphPhoto = await getGraphCurrentUserPhotoUrl(context);
+      if (graphPhoto) {
+        if (cacheKey && typeof window !== 'undefined') {
+          window.sessionStorage.setItem(cacheKey, graphPhoto);
+          window.localStorage.setItem(cacheKey, graphPhoto);
+        }
+        return graphPhoto;
+      }
+    } catch { /* continue */ }
+    break;
   }
 
-  for (const fallbackAccount of [loginName, email, displayName].filter(Boolean)) {
-    candidates.push(`${webUrl}/_layouts/15/userphoto.aspx?size=M&accountname=${encodeURIComponent(fallbackAccount)}`);
-  }
-
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    const dataUrl = await fetchImageDataUrl(candidate);
-    const resolved = dataUrl || candidate;
-    if (cacheKey && typeof window !== 'undefined' && resolved) {
-      window.sessionStorage.setItem(cacheKey, resolved);
-      window.localStorage.setItem(cacheKey, resolved);
+  const spPhotoAccounts = [email, loginName].filter(Boolean);
+  for (const account of spPhotoAccounts) {
+    const directUrl = `${webUrl}/_layouts/15/userphoto.aspx?size=M&accountname=${encodeURIComponent(account)}`;
+    if (cacheKey && typeof window !== 'undefined') {
+      window.sessionStorage.setItem(cacheKey, directUrl);
+      window.localStorage.setItem(cacheKey, directUrl);
     }
-    if (resolved) return resolved;
+    return directUrl;
   }
 
   return '';
@@ -674,7 +659,18 @@ function formatFieldsForWrite(fields: Record<string, any>, schema: Record<string
       case 'MultiChoice':
       case 'ChoiceMulti': {
         const values = Array.isArray(val) ? val : [val];
-        result[key] = values.map((entry) => String(entry));
+        const stringValues = values.map((entry) => String(entry)).filter(Boolean);
+        result[key] = { results: stringValues };
+        break;
+      }
+      case 'Choice':
+      case 'Text':
+      case 'Note': {
+        if (Array.isArray(val)) {
+          result[key] = val.filter(Boolean).join(', ');
+        } else {
+          result[key] = String(val);
+        }
         break;
       }
       case 'URL': {
@@ -721,7 +717,7 @@ function formatFieldsForWrite(fields: Record<string, any>, schema: Record<string
         break;
       default:
         if (Array.isArray(val)) {
-          result[key] = val.map((entry) => String(entry));
+          result[key] = val.filter(Boolean).join(', ');
         } else {
           result[key] = val;
         }
@@ -734,32 +730,49 @@ function formatFieldsForWrite(fields: Record<string, any>, schema: Record<string
 async function createListItem(context: WebPartContext, listName: string, fields: Record<string, any>): Promise<any> {
   const webUrl = resolveKriDataSiteUrl(context);
   const [digest, schema] = await Promise.all([
-    getRequestDigest(webUrl),
-    getFieldTypes(context, webUrl, listName),
+    getRequestDigest(webUrl).catch(() => ''),
+    getFieldTypes(context, webUrl, listName).catch(() => ({} as Record<string, string>)),
   ]);
-  const body = JSON.stringify(formatFieldsForWrite(fields, schema));
+  const formattedFields: Record<string, any> = formatFieldsForWrite(fields, schema);
   let lastError: unknown = null;
-  for (const attempt of requestAttempts(context, `${listUrl(webUrl, listName)}/items`)) {
-    try {
-      const res = await fetch(attempt, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          Accept: 'application/json;odata=nometadata',
-          'Content-Type': 'application/json;odata=nometadata',
-          'X-RequestDigest': digest,
-        },
-        body,
-      });
-      if (!res.ok) {
-        const detail = await res.text().catch(() => '');
-        throw new Error(`SP ${res.status}: ${detail.slice(0, 500)}`);
+
+  for (let attemptRound = 0; attemptRound < 4; attemptRound++) {
+    const body = JSON.stringify(formattedFields);
+    let propertyErrorRemoved = false;
+
+    for (const attempt of requestAttempts(context, `${listUrl(webUrl, listName)}/items`)) {
+      try {
+        const res = await fetch(attempt, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            Accept: 'application/json;odata=nometadata',
+            'Content-Type': 'application/json;odata=nometadata',
+            'X-RequestDigest': digest,
+          },
+          body,
+        });
+        if (!res.ok) {
+          const detail = await res.text().catch(() => '');
+          const propMatch = detail.match(/The property '([^']+)' does not exist on type/i);
+          if (propMatch && propMatch[1]) {
+            const badProp = propMatch[1];
+            delete formattedFields[badProp];
+            if (badProp.endsWith('Id')) {
+              delete formattedFields[badProp.slice(0, -2)];
+            }
+            propertyErrorRemoved = true;
+            break;
+          }
+          throw new Error(`SP ${res.status}: ${detail.slice(0, 500)}`);
+        }
+        const data = await res.json();
+        return { ...data, Id: data.Id, ID: String(data.Id) };
+      } catch (error) {
+        lastError = error;
       }
-      const data = await res.json();
-      return { ...data, Id: data.Id, ID: String(data.Id) };
-    } catch (error) {
-      lastError = error;
     }
+    if (!propertyErrorRemoved) break;
   }
   throw lastError || new Error(`SP create ${listName} failed`);
 }
@@ -767,35 +780,52 @@ async function createListItem(context: WebPartContext, listName: string, fields:
 async function updateListItem(context: WebPartContext, listName: string, id: string, fields: Record<string, any>): Promise<void> {
   const webUrl = resolveKriDataSiteUrl(context);
   const [digest, schema] = await Promise.all([
-    getRequestDigest(webUrl),
-    getFieldTypes(context, webUrl, listName),
+    getRequestDigest(webUrl).catch(() => ''),
+    getFieldTypes(context, webUrl, listName).catch(() => ({} as Record<string, string>)),
   ]);
-  const body = JSON.stringify(formatFieldsForWrite(fields, schema));
+  const formattedFields: Record<string, any> = formatFieldsForWrite(fields, schema);
   let lastError: unknown = null;
-  for (const attempt of requestAttempts(context, `${listUrl(webUrl, listName)}/items(${id})`)) {
-    try {
-      const res = await fetch(attempt, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          Accept: 'application/json;odata=nometadata',
-          'Content-Type': 'application/json;odata=nometadata',
-          'X-RequestDigest': digest,
-          'IF-MATCH': '*',
-          'X-HTTP-Method': 'MERGE',
-        },
-        body,
-      });
-      if (!res.ok && res.status !== 204) {
-        const detail = await res.text().catch(() => '');
-        throw new Error(`[SPREST] MERGE ${listName}/${id} -> ${res.status}: ${detail.slice(0, 300)}`);
+
+  for (let attemptRound = 0; attemptRound < 4; attemptRound++) {
+    const body = JSON.stringify(formattedFields);
+    let propertyErrorRemoved = false;
+
+    for (const attempt of requestAttempts(context, `${listUrl(webUrl, listName)}/items(${id})`)) {
+      try {
+        const res = await fetch(attempt, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            Accept: 'application/json;odata=nometadata',
+            'Content-Type': 'application/json;odata=nometadata',
+            'X-RequestDigest': digest,
+            'IF-MATCH': '*',
+            'X-HTTP-Method': 'MERGE',
+          },
+          body,
+        });
+        if (!res.ok && res.status !== 204) {
+          const detail = await res.text().catch(() => '');
+          const propMatch = detail.match(/The property '([^']+)' does not exist on type/i);
+          if (propMatch && propMatch[1]) {
+            const badProp = propMatch[1];
+            delete formattedFields[badProp];
+            if (badProp.endsWith('Id')) {
+              delete formattedFields[badProp.slice(0, -2)];
+            }
+            propertyErrorRemoved = true;
+            break;
+          }
+          throw new Error(`[SPREST] MERGE ${listName}/${id} -> ${res.status}: ${detail.slice(0, 300)}`);
+        }
+        return;
+      } catch (error) {
+        lastError = error;
       }
-      return;
-    } catch (error) {
-      lastError = error;
     }
+    if (!propertyErrorRemoved) break;
   }
-  throw lastError || new Error(`[SPREST] MERGE ${listName}/${id} failed`);
+  if (lastError) throw lastError;
 }
 
 async function deleteListItem(context: WebPartContext, listName: string, id: string): Promise<void> {
@@ -1051,8 +1081,47 @@ export interface IClient {
 }
 
 export async function getClients(context: WebPartContext): Promise<IClient[]> {
-  const items = await getListItems(context, 'KRI_Clients');
-  return items.map(normalizeClient);
+  const [items, siteUsers] = await Promise.all([
+    getListItems(context, 'KRI_Clients'),
+    getSharePointSiteUsers(context).catch(() => [] as ISiteUser[]),
+  ]);
+  const userMap = new Map<number, ISiteUser>();
+  siteUsers.forEach((u) => userMap.set(u.Id, u));
+  return items.map((item) => {
+    const rawAuthorId = Number(item.AuthorId || item.Author?.Id || item.CreatedById || 0);
+    const rawKccId = Number(item.KCCContactPersonId || item.KCCContactPerson?.Id || item.KCCContactPerson?.LookupId || 0);
+    const rawSecondaryId = Number(item.KRISecondaryContactId || item.KRISecondaryContact?.Id || item.KRISecondaryContact?.LookupId || 0);
+    const client = normalizeClient(item);
+    const authorId = rawAuthorId || Number(client.AuthorId || client.Author?.Id || 0);
+    if (authorId > 0) {
+      client.AuthorId = authorId;
+      const siteUser = userMap.get(authorId);
+      if (siteUser) {
+        client.Author = { Id: siteUser.Id, Title: siteUser.Title, Email: siteUser.Email, LoginName: siteUser.LoginName };
+      }
+    }
+    const kccId = rawKccId || Number(client.KCCContactPersonId || 0);
+    if (kccId > 0) {
+      client.KCCContactPersonId = kccId;
+      if (!client.KCCContactPerson || !normalizeDisplayText(client.KCCContactPerson)) {
+        const siteUser = userMap.get(kccId);
+        if (siteUser) {
+          client.KCCContactPerson = { Id: siteUser.Id, Title: siteUser.Title, Email: siteUser.Email, LoginName: siteUser.LoginName, LookupValue: siteUser.Title };
+        }
+      }
+    }
+    const secondaryId = rawSecondaryId || Number(client.KRISecondaryContactId || 0);
+    if (secondaryId > 0) {
+      client.KRISecondaryContactId = secondaryId;
+      if (!client.KRISecondaryContact || !normalizeDisplayText(client.KRISecondaryContact)) {
+        const siteUser = userMap.get(secondaryId);
+        if (siteUser) {
+          client.KRISecondaryContact = { Id: siteUser.Id, Title: siteUser.Title, Email: siteUser.Email, LoginName: siteUser.LoginName, LookupValue: siteUser.Title };
+        }
+      }
+    }
+    return client;
+  });
 }
 
 export async function getClient(context: WebPartContext, id: string): Promise<IClient> {
@@ -1399,11 +1468,33 @@ export interface IKRIUser {
 }
 
 export async function getKRIUsers(context: WebPartContext): Promise<IKRIUser[]> {
-  const items = await getListItems(context, 'KRI_Users');
+  const [items, siteUsers] = await Promise.all([
+    getListItems(context, 'KRI_Users'),
+    getSharePointSiteUsers(context).catch(() => [] as ISiteUser[]),
+  ]);
+  const userMapById = new Map<number, ISiteUser>();
+  const userMapByTitle = new Map<string, ISiteUser>();
+  siteUsers.forEach((u) => {
+    userMapById.set(u.Id, u);
+    if (u.Title) userMapByTitle.set(u.Title.toLowerCase(), u);
+  });
   const webUrl = resolveKriDataSiteUrl(context);
   const fields = await getFieldTypes(context, webUrl, 'KRI_Users').catch(() => ({}));
   const hasIsActive = Object.prototype.hasOwnProperty.call(fields, 'IsActive');
-  const normalized = items.map(normalizeUser).filter((u: IKRIUser) => (hasIsActive ? u.IsActive !== false : true));
+  const normalized = items.map((item) => {
+    const user = normalizeUser(item);
+    const lookupId = Number(item.UserAccountId || item.UserAccount?.Id || item.UserAccount?.LookupId || 0);
+    let siteUser = lookupId > 0 ? userMapById.get(lookupId) : undefined;
+    if (!siteUser && user.Title) siteUser = userMapByTitle.get(user.Title.toLowerCase());
+    if (siteUser) {
+      (user as any).Email = (user as any).Email || siteUser.Email || '';
+      (user as any).LoginName = (user as any).LoginName || siteUser.LoginName || '';
+      if (!user.UserAccount) {
+        (user as any).UserAccount = { Id: siteUser.Id, Title: siteUser.Title, Email: siteUser.Email, LoginName: siteUser.LoginName };
+      }
+    }
+    return user;
+  }).filter((u: IKRIUser) => (hasIsActive ? u.IsActive !== false : true));
   const deduped = new Map<string, IKRIUser>();
   normalized.forEach((user) => {
     const key = getUserMergeKey(user);

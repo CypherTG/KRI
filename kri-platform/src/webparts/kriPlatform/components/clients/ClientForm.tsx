@@ -70,13 +70,15 @@ function normalizePhoneForMatch(value?: string | null): string {
 function findDuplicateClient(candidates: IClient[], email?: string, phone?: string): IClient | null {
   const normalizedEmail = normalizeLookupText(email).toLowerCase();
   const normalizedPhone = normalizePhoneForMatch(phone);
-  if (!normalizedEmail && !normalizedPhone) return null;
+  const meaningfulPhone = normalizedPhone.length >= 7 ? normalizedPhone : '';
+  if (!normalizedEmail && !meaningfulPhone) return null;
   return candidates.find((client) => {
     const clientEmail = normalizeLookupText(client.Email).toLowerCase();
     const clientPhone = normalizePhoneForMatch(client.Phone);
+    const meaningfulClientPhone = clientPhone.length >= 7 ? clientPhone : '';
     return Boolean(
       normalizedEmail && clientEmail && normalizedEmail === clientEmail
-      || normalizedPhone && clientPhone && normalizedPhone === clientPhone
+      || meaningfulPhone && meaningfulClientPhone && meaningfulPhone === meaningfulClientPhone
     );
   }) || null;
 }
@@ -336,6 +338,7 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
   const [duplicateClient, setDuplicateClient] = useState<IClient | null>(null);
   const [duplicateMessage, setDuplicateMessage] = useState('');
   const [requestingAccess, setRequestingAccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const initialPhone = parsePhone(initialValues?.Phone);
   const [phoneCode, setPhoneCode] = useState(initialPhone.code);
   const [phoneNumber, setPhoneNumber] = useState(initialPhone.number);
@@ -422,6 +425,7 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
     };
   }, [context]);
 
+  const companyOptions = useMemo(() => dedupeSortedLookupValues(clients.map((client) => client.CompanyName)), [clients]);
   const jobTitleOptions = useMemo(() => dedupeSortedLookupValues(clients.map((client) => client.JobTitle)), [clients]);
   const projectOptions = useMemo(() => dedupeSortedLookupValues(clients.map((client) => client.ProjectName)), [clients]);
   const assignableUsers = useMemo(() => sortUsersByDisplayName(users), [users]);
@@ -442,19 +446,23 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
   };
 
   const handleSave = async () => {
+    setSaveError(null);
     const phone = normalizeLookupText([phoneCode, phoneNumber].filter(Boolean).join(' '));
     const latestClients = clients.length > 0 ? clients : await getClients(context).catch(() => [] as IClient[]);
     const duplicate = findDuplicateClient(latestClients, formData.Email, phone);
     if (duplicate) {
       setDuplicateClient(duplicate);
       setDuplicateMessage('A contact with this email or phone already exists. Open it if you have access, or submit an access request to the contact owner.');
+      setSaveError('A contact with this email or phone already exists.');
       return;
     }
 
     setSaving(true);
     try {
       if (canManageAssignments && normalizeLookupText(formData.NeedsOpportunity)) {
-        await ensureKairosClientManagementFields(context);
+        await ensureKairosClientManagementFields(context).catch((err) => {
+          console.warn('[ClientForm] Non-fatal check on management fields', err);
+        });
       }
       const saved = await createClient(context, {
         ...formData,
@@ -470,8 +478,9 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
         KRISecondaryContact: formData.KRISecondaryContact || undefined,
       });
       onSaved(saved);
-    } catch (error) {
+    } catch (error: any) {
       console.error('[ClientForm] Failed to save client', error);
+      setSaveError(error?.message || 'Failed to save contact. Please verify your connection and SharePoint list permissions.');
     } finally {
       setSaving(false);
     }
@@ -568,6 +577,13 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
                 value={formData.LastName || ''}
                 onChange={(event) => setField('LastName', event.target.value)}
               />
+              <LookupField
+                label="Company"
+                value={normalizeLookupText(formData.CompanyName)}
+                options={companyOptions}
+                helperText="Search existing companies or enter a new company."
+                onChange={(value) => setField('CompanyName', value)}
+              />
               <TextField
                 select
                 label="Gender"
@@ -605,6 +621,13 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
 
           {activeStep === 1 && (
             <Box sx={fieldGrid}>
+              <LookupField
+                label="Company"
+                value={normalizeLookupText(formData.CompanyName)}
+                options={companyOptions}
+                helperText="Associated company."
+                onChange={(value) => setField('CompanyName', value)}
+              />
               <MultiLookupField
                 label="Business Arm(s)"
                 value={selectedBusinessArms}
@@ -687,6 +710,11 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
 
           {activeStep === 3 && (
             <Box sx={{ display: 'grid', gap: 2 }}>
+              {saveError && (
+                <Alert severity="error" sx={{ borderRadius: 2 }}>
+                  {saveError}
+                </Alert>
+              )}
               <TextField
                 select
                 label="KRI Stage"
@@ -777,9 +805,16 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
             variant="contained"
             onClick={() => { void handleSave(); }}
             disabled={saving}
-            sx={{ borderRadius: 2, fontWeight: 700, minWidth: 128 }}
+            sx={{ borderRadius: 2, fontWeight: 700, minWidth: 140 }}
           >
-            {saving ? 'Saving...' : 'Save Contact'}
+            {saving ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CircularProgress size={16} color="inherit" />
+                <span>Saving...</span>
+              </Box>
+            ) : (
+              'Save Contact'
+            )}
           </Button>
         )}
       </DialogActions>

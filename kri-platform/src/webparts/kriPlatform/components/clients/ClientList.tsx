@@ -30,9 +30,9 @@ import KriStageBadge from '../shared/KriStageBadge';
 import ClientCard from './ClientCard';
 import { TableSkeleton, CardSkeleton } from '../shared/LoadingState';
 import EmptyState from '../shared/EmptyState';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { buildCompanySummaries, normalizeLookupText } from '../../utils/lookupHelpers';
-import { approvedClientIdsForRequestUser, canViewClient } from '../../utils/kairosPermissions';
+import { approvedClientIdsForRequestUser, canViewClient, getClientCreatorLabel, isClientOwnedByPrincipal } from '../../utils/kairosPermissions';
 import { getContactAccessRequestsForUser, KairosContactAccessRequest, upsertCompanyRegistryRecord } from '../../services/sharepointProvisioning';
 import ClientForm from './ClientForm';
 
@@ -51,10 +51,13 @@ type Mode = 'clients' | 'companies';
 
 export default function ClientList({ context, showNewClientForm, onNewClientFormClose, pageVariant = 'list' }: Props) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialStage = searchParams.get('stage') || 'All';
   const { clients, setClients, loadingClients, setLoadingClients, currentUserProfile } = useStore();
   const [mode, setMode] = useState<Mode>('companies');
   const [search, setSearch] = useState('');
-  const [stageFilter, setStageFilter] = useState('All');
+  const [stageFilter, setStageFilter] = useState(initialStage);
+  const [ownerFilter, setOwnerFilter] = useState<'All' | 'Mine'>('All');
   const [view, setView] = useState<'grid' | 'table'>('table');
   const [sortBy, setSortBy] = useState('Newest');
   const [companyPickerOpen, setCompanyPickerOpen] = useState(false);
@@ -117,13 +120,15 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
 
   const filteredClients = useMemo(() => {
     const query = normalizeLookupText(search).toLowerCase();
+    const principal = siteUser || context.pageContext.user;
     return permissionScopedClients.filter((client) => {
       const fullText = `${client.FirstName} ${client.LastName} ${client.CompanyName} ${client.Email} ${client.JobTitle} ${client.ProjectName}`.toLowerCase();
       const matchSearch = !query || fullText.includes(query);
       const matchStage = stageFilter === 'All' || client.KRIStage === stageFilter;
-      return matchSearch && matchStage;
+      const matchOwner = ownerFilter === 'All' || isClientOwnedByPrincipal(client, principal);
+      return matchSearch && matchStage && matchOwner;
     });
-  }, [permissionScopedClients, search, stageFilter]);
+  }, [permissionScopedClients, search, stageFilter, ownerFilter, siteUser, context.pageContext.user]);
 
   const sortedClients = useMemo(() => {
     const list = [...filteredClients];
@@ -190,7 +195,7 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
             {pageVariant === 'add-contact' ? "Enter Client's Company" : 'Contact List'}
           </Typography>
           <Typography sx={{ fontSize: '0.83rem', color: '#7B8FA6', fontWeight: 500 }}>
-            {isAdmin ? 'Admin view: all contacts' : 'My contacts and approved shared contacts'}
+            {ownerFilter === 'Mine' ? 'My contacts' : isAdmin ? 'Admin view: all contacts' : 'All contacts'}
           </Typography>
         </Box>
 
@@ -318,6 +323,23 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
         </Box>
 
         <Box sx={{ display: 'flex', gap: 1, px: 2.5, py: 1.25, borderBottom: '1px solid #F0F2F5', flexWrap: 'wrap' }}>
+          {(['All', 'Mine'] as const).map((opt) => (
+            <Chip
+              key={`owner-${opt}`}
+              label={opt === 'Mine' ? 'My Contacts' : 'All Contacts'}
+              size="small"
+              onClick={() => setOwnerFilter(opt)}
+              sx={{
+                cursor: 'pointer',
+                background: ownerFilter === opt ? '#FF7043' : '#F5F6FA',
+                color: ownerFilter === opt ? '#FFFFFF' : '#7B8FA6',
+                fontWeight: ownerFilter === opt ? 700 : 500,
+                border: 'none',
+                '&:hover': { background: ownerFilter === opt ? '#E64A19' : '#EEF0F6' },
+                transition: 'all 0.15s',
+              }}
+            />
+          ))}
           {STAGE_FILTER_OPTIONS.map((opt) => (
             <Chip
               key={opt}
@@ -419,7 +441,7 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
                   <TableCell>Company</TableCell>
                   <TableCell>Phone Number</TableCell>
                   <TableCell>Email</TableCell>
-                  <TableCell>Country</TableCell>
+                  <TableCell>Created By</TableCell>
                   <TableCell>Status</TableCell>
                 </TableRow>
               </TableHead>
@@ -463,7 +485,7 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
                       <Typography sx={{ fontSize: '0.88rem', color: '#4A5568' }}>{client.Email}</Typography>
                     </TableCell>
                     <TableCell>
-                      <Typography sx={{ fontSize: '0.88rem', color: '#4A5568' }}>-</Typography>
+                      <Typography sx={{ fontSize: '0.82rem', color: '#7B8FA6' }}>{getClientCreatorLabel(client) || '-'}</Typography>
                     </TableCell>
                     <TableCell>
                       <KriStageBadge stage={client.KRIStage} />

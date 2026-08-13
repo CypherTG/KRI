@@ -52,6 +52,7 @@ import { useStore } from '../../store/useStore';
 import { DashboardSkeleton } from '../shared/LoadingState';
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+const MONTHS_SINGLE = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 const BUSINESS_ARMS = ['All', 'KCC', 'PMT7', 'INTERKONSTRUCT'];
 const STAGE_COLORS: Record<string, string> = {
   Knowledge: '#477BFF',
@@ -67,7 +68,13 @@ function getLeaderboardPhotoCacheKey(userId: string, name: string): string {
 
 function readLeaderboardPhotoCache(key: string): string {
   if (typeof window === 'undefined' || !key) return '';
-  return window.sessionStorage.getItem(key) || window.localStorage.getItem(key) || '';
+  const val = window.sessionStorage.getItem(key) || window.localStorage.getItem(key) || '';
+  if (val && (val.startsWith('data:') || val.startsWith('blob:'))) {
+    window.sessionStorage.removeItem(key);
+    window.localStorage.removeItem(key);
+    return '';
+  }
+  return val;
 }
 
 function writeLeaderboardPhotoCache(key: string, value: string): void {
@@ -200,7 +207,25 @@ function SignalChart({
         })}
       </Box>
 
-      {!compact && (
+      {compact ? (
+        <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(candles.length, 1)}, minmax(0, 1fr))`, gap: compact ? 0.3 : 0.45, px: compact ? 0.25 : 0.15 }}>
+          {MONTHS_SINGLE.map((month, index) => (
+            <Typography
+              key={month + index}
+              sx={{
+                fontSize: '0.55rem',
+                color: activeIndex === index ? color : 'text.secondary',
+                textAlign: 'center',
+                fontWeight: 700,
+                letterSpacing: '0.02em',
+                lineHeight: 1,
+              }}
+            >
+              {month}
+            </Typography>
+          ))}
+        </Box>
+      ) : (
         <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(candles.length, 1)}, minmax(0, 1fr))`, gap: 0.45, px: 0.15 }}>
           {MONTHS.map((month, index) => (
             <Typography
@@ -448,6 +473,7 @@ function escapeCsv(value: unknown): string {
 function normalizeText(value: any): string {
   if (!value) return '';
   if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number') return String(value);
   const candidates = [
     value.LookupValue,
     value.Title,
@@ -459,6 +485,23 @@ function normalizeText(value: any): string {
   ];
   const found = candidates.find((entry) => entry && String(entry).trim());
   return found ? String(found).trim() : '';
+}
+
+function extractPersonId(value: any): string {
+  if (!value) return '';
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'string') return value.trim();
+  const candidates = [value.Id, value.ID, value.LookupId, value.UserId];
+  const found = candidates.find((entry) => entry !== undefined && entry !== null && String(entry).trim());
+  return found !== undefined ? String(found).trim() : '';
+}
+
+function extractPersonEmail(value: any): string {
+  if (!value) return '';
+  if (typeof value === 'string' && value.includes('@')) return value.trim().toLowerCase();
+  const candidates = [value.Email, value.EMail, value.email, value.LoginName];
+  const found = candidates.find((entry) => entry && String(entry).trim());
+  return found ? String(found).trim().toLowerCase() : '';
 }
 
 function buildUserTokens(user: IKRIUser): string[] {
@@ -482,9 +525,25 @@ function buildUserTokens(user: IKRIUser): string[] {
 }
 
 function matchesUser(personValue: any, user: IKRIUser): boolean {
+  if (!personValue) return false;
+  const personId = extractPersonId(personValue);
+  const userId = extractPersonId(user.UserAccount);
+  if (personId && userId && personId === userId) return true;
+  const personEmail = extractPersonEmail(personValue);
+  const userEmail = extractPersonEmail(user.UserAccount);
+  if (personEmail && userEmail && personEmail === userEmail) return true;
   const haystack = normalizeText(personValue).toLowerCase();
   if (!haystack) return false;
   return buildUserTokens(user).some((token) => token && haystack.includes(token));
+}
+
+function matchesUserByIdOrPerson(idValue: any, personValue: any, user: IKRIUser): boolean {
+  if (idValue) {
+    const id = String(idValue).trim();
+    const userId = extractPersonId(user.UserAccount);
+    if (id && userId && id === userId) return true;
+  }
+  return matchesUser(personValue, user);
 }
 
 function normalizeFamily(value: string): string {
@@ -529,6 +588,7 @@ export default function TeamDashboard({ context, refreshToken = 0 }: { context: 
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [photoCacheTick, setPhotoCacheTick] = useState(0);
   const leaderboardPhotoWarmRef = useRef<string>('');
+
   const hasCachedData = clients.length > 0 && engagements.length > 0 && comms.length > 0 && stageHistory.length > 0 && users.length > 0;
 
   useEffect(() => {
@@ -722,7 +782,13 @@ export default function TeamDashboard({ context, refreshToken = 0 }: { context: 
     });
 
     const scored = familyFiltered.map((user) => {
-      const matchedClients = clients.filter((client) => matchesUser(client.KCCContactPerson, user));
+      const userId = extractPersonId(user.UserAccount);
+      const matchedClients = clients.filter((client) => {
+        if (matchesUserByIdOrPerson(client.KCCContactPersonId, client.KCCContactPerson, user)) return true;
+        const authorId = extractPersonId(client.AuthorId || client.Author);
+        if (authorId && userId && authorId === userId) return true;
+        return false;
+      });
       const matchedComms = comms.filter((comm) => matchesUser(comm.LoggedBy, user));
       const matchedEngagements = engagements.filter((engagement) => matchesUser(engagement.OwnedBy, user));
       const matchedStageChanges = stageHistory.filter((entry) => matchesUser(entry.ChangedBy, user));
@@ -797,7 +863,13 @@ export default function TeamDashboard({ context, refreshToken = 0 }: { context: 
             const cached = readLeaderboardPhotoCache(cacheKey);
             if (cached) return [cacheKey, cached] as const;
             const photo = await resolveSharePointUserPhotoDataUrl(context, row.sourceUser);
-            const value = photo || row.avatarUrl || '';
+            let value = photo || row.avatarUrl || '';
+            if (!value) {
+              const webUrl = context.pageContext.web.absoluteUrl;
+              const src: any = row.sourceUser || {};
+              const account = src.Email || src.UserAccount?.Email || src.LoginName || src.UserAccount?.LoginName || row.name || '';
+              if (account) value = `${webUrl}/_layouts/15/userphoto.aspx?size=M&accountname=${encodeURIComponent(account)}`;
+            }
             if (value) writeLeaderboardPhotoCache(cacheKey, value);
             return [cacheKey, value] as const;
           }),
@@ -976,16 +1048,10 @@ export default function TeamDashboard({ context, refreshToken = 0 }: { context: 
               label="Contact List"
               value={filteredClients.length}
               trendUp
-              trendLabel="Click to reset filters"
+              trendLabel="Click to view all contacts"
               iconBg="rgba(71,123,255,0.10)"
               iconColor="#477BFF"
-              onClick={() => {
-                setActiveBusiness('All');
-                setActiveContact('All');
-                setActiveLevel('All');
-                setActiveMonth(null);
-                setActiveMetric('all');
-              }}
+              onClick={() => navigate('/clients')}
               active={activeMetric === 'all'}
             />
             <StatCard
@@ -993,13 +1059,10 @@ export default function TeamDashboard({ context, refreshToken = 0 }: { context: 
               label="Accuracy"
               value={`${rapportPct}%`}
               trendUp={false}
-              trendLabel="Click to inspect Rapport clients"
+              trendLabel="Click to view Rapport clients"
               iconBg="rgba(0,191,165,0.10)"
               iconColor="#00BFA5"
-              onClick={() => {
-                setActiveMetric('rapport');
-                setActiveLevel('Rapport');
-              }}
+              onClick={() => navigate('/clients?stage=Rapport')}
               active={activeMetric === 'rapport'}
             />
             <StatCard
@@ -1007,23 +1070,18 @@ export default function TeamDashboard({ context, refreshToken = 0 }: { context: 
               label="Avg. Conversion Rate"
               value={`${conversionRate}%`}
               trendUp={false}
-              trendLabel="Click to inspect won deals"
+              trendLabel="Click to view engagements"
               iconBg="rgba(255,112,67,0.10)"
               iconColor="#FF7043"
-              onClick={() => {
-                setActiveMetric('conversion');
-              }}
+              onClick={() => navigate('/engagements')}
               active={activeMetric === 'conversion'}
             />
           </Box>
 
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 2.25, mt: 2.25 }}>
             <Paper
-              onClick={() => {
-                setActiveMetric('knowledge');
-                setActiveLevel('Knowledge');
-              }}
-              sx={{ p: 2.25, borderRadius: 3, minHeight: 150, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', cursor: 'pointer', border: activeMetric === 'knowledge' ? '1px solid' : '1px solid transparent', borderColor: activeMetric === 'knowledge' ? '#477BFF' : 'transparent' }}
+              onClick={() => navigate('/clients?stage=Knowledge')}
+              sx={{ p: 2.25, borderRadius: 3, minHeight: 150, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', cursor: 'pointer', border: '1px solid transparent', '&:hover': { borderColor: '#477BFF', boxShadow: '0 2px 8px rgba(71,123,255,0.15)' }, transition: 'all 0.18s ease' }}
             >
               <Box>
                 <Typography sx={{ fontSize: '0.8rem', color: 'text.secondary', fontWeight: 600, mb: 0.4, lineHeight: 1.35 }}>
@@ -1036,11 +1094,8 @@ export default function TeamDashboard({ context, refreshToken = 0 }: { context: 
               <SignalChart data={stageMonthly.knowledge} color="#477BFF" compact />
             </Paper>
             <Paper
-              onClick={() => {
-                setActiveMetric('rapport');
-                setActiveLevel('Rapport');
-              }}
-              sx={{ p: 2.25, borderRadius: 3, minHeight: 150, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', cursor: 'pointer', border: activeMetric === 'rapport' ? '1px solid' : '1px solid transparent', borderColor: activeMetric === 'rapport' ? '#00BFA5' : 'transparent' }}
+              onClick={() => navigate('/clients?stage=Rapport')}
+              sx={{ p: 2.25, borderRadius: 3, minHeight: 150, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', cursor: 'pointer', border: '1px solid transparent', '&:hover': { borderColor: '#00BFA5', boxShadow: '0 2px 8px rgba(0,191,165,0.15)' }, transition: 'all 0.18s ease' }}
             >
               <Box>
                 <Typography sx={{ fontSize: '0.8rem', color: 'text.secondary', fontWeight: 600, mb: 0.4, lineHeight: 1.35 }}>
@@ -1053,11 +1108,8 @@ export default function TeamDashboard({ context, refreshToken = 0 }: { context: 
               <SignalChart data={stageMonthly.rapport} color="#00BFA5" compact />
             </Paper>
             <Paper
-              onClick={() => {
-                setActiveMetric('intimacy');
-                setActiveLevel('Intimacy');
-              }}
-              sx={{ p: 2.25, borderRadius: 3, minHeight: 150, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', cursor: 'pointer', border: activeMetric === 'intimacy' ? '1px solid' : '1px solid transparent', borderColor: activeMetric === 'intimacy' ? '#FF7043' : 'transparent' }}
+              onClick={() => navigate('/clients?stage=Intimacy')}
+              sx={{ p: 2.25, borderRadius: 3, minHeight: 150, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', cursor: 'pointer', border: '1px solid transparent', '&:hover': { borderColor: '#FF7043', boxShadow: '0 2px 8px rgba(255,112,67,0.15)' }, transition: 'all 0.18s ease' }}
             >
               <Box>
                 <Typography sx={{ fontSize: '0.8rem', color: 'text.secondary', fontWeight: 600, mb: 0.4, lineHeight: 1.35 }}>

@@ -66,12 +66,14 @@ import CakeIcon from '@mui/icons-material/Cake';
 import WorkIcon from '@mui/icons-material/Work';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import TagIcon from '@mui/icons-material/Tag';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import { sortUsersByDisplayName, userDisplayName } from '../../utils/lookupHelpers';
 import {
   approvedClientIdsForRequestUser,
   canEditClient,
   canViewClient,
+  getClientCreatorLabel,
   isClientOwnedByPrincipal,
   latestAccessRequestForClient,
 } from '../../utils/kairosPermissions';
@@ -402,12 +404,18 @@ export default function ClientDetail({ context }: Props) {
   }
 
   if (!hasViewAccess) {
+    const companyName = client?.CompanyName || '';
     return (
       <Box sx={{ p: 3.5 }}>
         <Breadcrumbs separator={<NavigateNextIcon sx={{ fontSize: 16, color: '#B0BEC5' }} />} sx={{ mb: 3 }}>
           <Link component={RouterLink} to="/clients" underline="hover" sx={{ color: '#477BFF', fontSize: '0.85rem', fontWeight: 600 }}>
             Contact List
           </Link>
+          {companyName && (
+            <Link component={RouterLink} to={`/companies/${encodeURIComponent(companyName)}`} underline="hover" sx={{ color: '#477BFF', fontSize: '0.85rem', fontWeight: 600 }}>
+              {companyName}
+            </Link>
+          )}
           <Typography sx={{ color: '#6B7280', fontSize: '0.85rem' }}>Restricted contact</Typography>
         </Breadcrumbs>
         <Paper sx={{ p: 3, borderRadius: 3, maxWidth: 760 }}>
@@ -477,6 +485,11 @@ export default function ClientDetail({ context }: Props) {
         <Link component={RouterLink} to="/clients" underline="hover" sx={{ color: '#477BFF', fontSize: '0.85rem', fontWeight: 600 }}>
           Contact List
         </Link>
+        {displayCompany && (
+          <Link component={RouterLink} to={`/companies/${encodeURIComponent(displayCompany)}`} underline="hover" sx={{ color: '#477BFF', fontSize: '0.85rem', fontWeight: 600 }}>
+            {displayCompany}
+          </Link>
+        )}
         <Typography sx={{ color: '#6B7280', fontSize: '0.85rem' }}>
           {displayName}
         </Typography>
@@ -567,6 +580,11 @@ export default function ClientDetail({ context }: Props) {
             label="Instagram"
             value={client.InstagramHandle}
             href={client.InstagramHandle ? `https://instagram.com/${client.InstagramHandle.replace('@', '')}` : undefined}
+          />
+          <InfoRow
+            icon={<PersonAddIcon sx={{ fontSize: 15 }} />}
+            label="Created By"
+            value={getClientCreatorLabel(client) || client.DateRegistered ? `added ${formatDate(client.DateRegistered) || ''}`.trim() : ''}
           />
 
           {canManageAssignments && (

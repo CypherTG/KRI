@@ -480,7 +480,18 @@ function formatFieldsForWrite(fields: Record<string, any>, schema: Record<string
       case 'MultiChoice':
       case 'ChoiceMulti': {
         const values = Array.isArray(val) ? val : [val];
-        result[key] = values.map((entry) => String(entry));
+        const stringValues = values.map((entry) => String(entry)).filter(Boolean);
+        result[key] = { results: stringValues };
+        break;
+      }
+      case 'Choice':
+      case 'Text':
+      case 'Note': {
+        if (Array.isArray(val)) {
+          result[key] = val.filter(Boolean).join(', ');
+        } else {
+          result[key] = String(val);
+        }
         break;
       }
       case 'URL': {
@@ -527,7 +538,7 @@ function formatFieldsForWrite(fields: Record<string, any>, schema: Record<string
         break;
       default:
         if (Array.isArray(val)) {
-          result[key] = val.map((entry) => String(entry));
+          result[key] = val.filter(Boolean).join(', ');
         } else {
           result[key] = val;
         }
@@ -540,51 +551,98 @@ function formatFieldsForWrite(fields: Record<string, any>, schema: Record<string
 async function createListItem(context: WebPartContext, listName: string, fields: Record<string, any>): Promise<any> {
   const webUrl = context.pageContext.web.absoluteUrl;
   const [digest, schema] = await Promise.all([
-    getRequestDigest(webUrl),
-    getFieldTypes(webUrl, listName),
+    getRequestDigest(webUrl).catch(() => ''),
+    getFieldTypes(webUrl, listName).catch(() => ({} as Record<string, string>)),
   ]);
-  const body = JSON.stringify(formatFieldsForWrite(fields, schema));
-  const res = await fetch(`${listUrl(webUrl, listName)}/items`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json;odata=nometadata',
-      'Content-Type': 'application/json;odata=nometadata',
-      'X-RequestDigest': digest,
-    },
-    body,
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`SP ${res.status}: ${detail.slice(0, 500)}`);
+  const formattedFields: Record<string, any> = formatFieldsForWrite(fields, schema);
+  let lastError: unknown = null;
+
+  for (let attemptRound = 0; attemptRound < 4; attemptRound++) {
+    const body = JSON.stringify(formattedFields);
+    let propertyErrorRemoved = false;
+
+    try {
+      const res = await fetch(`${listUrl(webUrl, listName)}/items`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          Accept: 'application/json;odata=nometadata',
+          'Content-Type': 'application/json;odata=nometadata',
+          'X-RequestDigest': digest,
+        },
+        body,
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        const propMatch = detail.match(/The property '([^']+)' does not exist on type/i);
+        if (propMatch && propMatch[1]) {
+          const badProp = propMatch[1];
+          delete formattedFields[badProp];
+          if (badProp.endsWith('Id')) {
+            delete formattedFields[badProp.slice(0, -2)];
+          }
+          propertyErrorRemoved = true;
+          continue;
+        }
+        throw new Error(`SP ${res.status}: ${detail.slice(0, 500)}`);
+      }
+      const data = await res.json();
+      return { ...data, Id: data.Id, ID: String(data.Id) };
+    } catch (error) {
+      lastError = error;
+    }
+    if (!propertyErrorRemoved) break;
   }
-  const data = await res.json();
-  return { ...data, Id: data.Id, ID: String(data.Id) };
+  throw lastError || new Error(`SP create ${listName} failed`);
 }
 
 async function updateListItem(context: WebPartContext, listName: string, id: string, fields: Record<string, any>): Promise<void> {
   const webUrl = context.pageContext.web.absoluteUrl;
   const [digest, schema] = await Promise.all([
-    getRequestDigest(webUrl),
-    getFieldTypes(webUrl, listName),
+    getRequestDigest(webUrl).catch(() => ''),
+    getFieldTypes(webUrl, listName).catch(() => ({} as Record<string, string>)),
   ]);
-  const body = JSON.stringify(formatFieldsForWrite(fields, schema));
-  const res = await fetch(`${listUrl(webUrl, listName)}/items(${id})`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json;odata=nometadata',
-      'Content-Type': 'application/json;odata=nometadata',
-      'X-RequestDigest': digest,
-      'IF-MATCH': '*',
-      'X-HTTP-Method': 'MERGE',
-    },
-    body,
-  });
-  if (!res.ok && res.status !== 204) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`[SPREST] MERGE ${listName}/${id} -> ${res.status}: ${detail.slice(0, 300)}`);
+  const formattedFields: Record<string, any> = formatFieldsForWrite(fields, schema);
+  let lastError: unknown = null;
+
+  for (let attemptRound = 0; attemptRound < 4; attemptRound++) {
+    const body = JSON.stringify(formattedFields);
+    let propertyErrorRemoved = false;
+
+    try {
+      const res = await fetch(`${listUrl(webUrl, listName)}/items(${id})`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          Accept: 'application/json;odata=nometadata',
+          'Content-Type': 'application/json;odata=nometadata',
+          'X-RequestDigest': digest,
+          'IF-MATCH': '*',
+          'X-HTTP-Method': 'MERGE',
+        },
+        body,
+      });
+      if (!res.ok && res.status !== 204) {
+        const detail = await res.text().catch(() => '');
+        const propMatch = detail.match(/The property '([^']+)' does not exist on type/i);
+        if (propMatch && propMatch[1]) {
+          const badProp = propMatch[1];
+          delete formattedFields[badProp];
+          if (badProp.endsWith('Id')) {
+            delete formattedFields[badProp.slice(0, -2)];
+          }
+          propertyErrorRemoved = true;
+          continue;
+        }
+        throw new Error(`[SPREST] MERGE ${listName}/${id} -> ${res.status}: ${detail.slice(0, 300)}`);
+      }
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+    if (!propertyErrorRemoved) break;
   }
+  if (lastError) throw lastError;
 }
 
 async function deleteListItem(context: WebPartContext, listName: string, id: string): Promise<void> {

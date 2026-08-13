@@ -328,6 +328,8 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
     KCCContactPerson: initialValues?.KCCContactPerson || null,
   }));
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -373,6 +375,7 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
     };
   }, [context, canManageAssignments, clients.length, users.length, setClients, setUsers]);
 
+  const companyOptions = useMemo(() => dedupeSortedLookupValues(clients.map((client) => client.CompanyName)), [clients]);
   const jobTitleOptions = useMemo(() => dedupeSortedLookupValues(clients.map((client) => client.JobTitle)), [clients]);
   const projectOptions = useMemo(() => dedupeSortedLookupValues(clients.map((client) => client.ProjectName)), [clients]);
   const assignableUsers = useMemo(() => sortUsersByDisplayName(users), [users]);
@@ -392,6 +395,7 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
   };
 
   const handleSave = async () => {
+    setSaveError(null);
     setSaving(true);
     try {
       const phone = normalizeLookupText([phoneCode, phoneNumber].filter(Boolean).join(' '));
@@ -408,8 +412,9 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
         KRISecondaryContact: formData.KRISecondaryContact || undefined,
       });
       onSaved(saved);
-    } catch (error) {
+    } catch (error: any) {
       console.error('[ClientForm] Failed to save client', error);
+      setSaveError(error?.message || 'Failed to save contact. Please check your network and SharePoint list permissions.');
     } finally {
       setSaving(false);
     }
@@ -456,6 +461,13 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
                 value={formData.LastName || ''}
                 onChange={(event) => setField('LastName', event.target.value)}
               />
+              <LookupField
+                label="Company"
+                value={normalizeLookupText(formData.CompanyName)}
+                options={companyOptions}
+                helperText="Search existing companies or enter a new company."
+                onChange={(value) => setField('CompanyName', value)}
+              />
               <TextField
                 select
                 label="Gender"
@@ -487,6 +499,13 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
 
           {activeStep === 1 && (
             <Box sx={fieldGrid}>
+              <LookupField
+                label="Company"
+                value={normalizeLookupText(formData.CompanyName)}
+                options={companyOptions}
+                helperText="Associated company."
+                onChange={(value) => setField('CompanyName', value)}
+              />
               <MultiLookupField
                 label="Business Arm(s)"
                 value={selectedBusinessArms}
@@ -569,6 +588,11 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
 
           {activeStep === 3 && (
             <Box sx={{ display: 'grid', gap: 2 }}>
+              {saveError && (
+                <Alert severity="error" sx={{ borderRadius: 2 }}>
+                  {saveError}
+                </Alert>
+              )}
               <TextField
                 select
                 label="KRI Stage"
@@ -641,9 +665,16 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
             variant="contained"
             onClick={() => { void handleSave(); }}
             disabled={saving}
-            sx={{ borderRadius: 2, fontWeight: 700, minWidth: 128 }}
+            sx={{ borderRadius: 2, fontWeight: 700, minWidth: 140 }}
           >
-            {saving ? 'Saving...' : 'Save Contact'}
+            {saving ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CircularProgress size={16} color="inherit" />
+                <span>Saving...</span>
+              </Box>
+            ) : (
+              'Save Contact'
+            )}
           </Button>
         )}
       </DialogActions>

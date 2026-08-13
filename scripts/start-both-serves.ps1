@@ -223,6 +223,9 @@ Write-Host "Serving KAIROS on $kairosPort and GEMS on $gemsPort..."
 Write-Host 'Watching build output below. Wait for both "Server started" and "webpack" ready messages.'
 Write-Host ''
 
+$kairosManifest = Join-Path $kairos 'temp\manifests.js'
+$gemsManifest = Join-Path $gems 'temp\manifests.js'
+
 while (($jobs | Where-Object { $_.State -eq 'Running' }).Count -gt 0) {
   foreach ($job in $jobs) {
     $items = Receive-Job -Job $job -ErrorAction SilentlyContinue
@@ -234,11 +237,15 @@ while (($jobs | Where-Object { $_.State -eq 'Running' }).Count -gt 0) {
 
       Write-Host "[$($job.Name)] $text"
 
-      if ($text -match 'webpack') {
-        $ready[$job.Name] = $true
+      if ($job.Name -eq 'KAIROS' -and ($text -match "Finished subtask '(webpack|reload)'" -or (Test-Path $kairosManifest))) {
+        if (Test-Path $kairosManifest) {
+          $ready['KAIROS'] = $true
+        }
       }
-      if ($text -match 'Server started https://localhost:(4321|4322)|Local server is running|The local server is running') {
-        $ready[$job.Name] = $true
+      if ($job.Name -eq 'GEMS' -and ($text -match "Finished subtask '(webpack|reload)'" -or (Test-Path $gemsManifest))) {
+        if (Test-Path $gemsManifest) {
+          $ready['GEMS'] = $true
+        }
       }
     }
   }
@@ -248,6 +255,8 @@ while (($jobs | Where-Object { $_.State -eq 'Running' }).Count -gt 0) {
   }
 
   if ($ready.KAIROS -and $ready.GEMS) {
+    Write-Host ''
+    Write-Host 'Both KAIROS and GEMS manifests and bundles are compiled and ready.'
     break
   }
 
