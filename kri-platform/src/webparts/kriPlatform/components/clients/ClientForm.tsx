@@ -38,7 +38,7 @@ interface Props {
 
 const STEPS = ['Identity', 'Relationship', 'Contact', 'Review'];
 const GENDER_OPTIONS = ['Female', 'Male', 'Other', 'Prefer not to say'];
-const STAGE_OPTIONS = ['Knowledge', 'Rapport', 'Intimacy'];
+const STAGE_OPTIONS = ['Draft', 'Knowledge', 'Rapport', 'Intimacy'];
 const BUSINESS_ARM_OPTIONS = ['INTERKONSTRUCT', 'KCC', 'PMT7'].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
 function parsePhone(value?: string | null) {
@@ -486,6 +486,43 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
     }
   };
 
+  const handleSaveDraft = async () => {
+    setSaveError(null);
+    const firstName = normalizeLookupText(formData.FirstName);
+    const lastName = normalizeLookupText(formData.LastName);
+    const companyName = normalizeLookupText(formData.CompanyName);
+
+    if (!firstName && !lastName && !companyName) {
+      setSaveError('To save as draft, please provide at least a contact name or company name.');
+      return;
+    }
+
+    const phone = normalizeLookupText([phoneCode, phoneNumber].filter(Boolean).join(' '));
+    setSaving(true);
+    try {
+      const saved = await createClient(context, {
+        ...formData,
+        KRIStage: 'Draft',
+        Phone: phone,
+        CompanyName: companyName,
+        JobTitle: normalizeLookupText(formData.JobTitle),
+        ProjectName: normalizeLookupText(formData.ProjectName),
+        BusinessArm: (formData.BusinessArm || []).length
+          ? (formData.BusinessArm || []).map((entry) => normalizeLookupText(entry)).filter(Boolean)
+          : undefined,
+        NeedsOpportunity: canManageAssignments ? normalizeLookupText(formData.NeedsOpportunity) : undefined,
+        KCCContactPerson: formData.KCCContactPerson || undefined,
+        KRISecondaryContact: formData.KRISecondaryContact || undefined,
+      });
+      onSaved(saved);
+    } catch (error: any) {
+      console.error('[ClientForm] Failed to save draft', error);
+      setSaveError(error?.message || 'Failed to save draft. Please check your connection.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleDuplicateAccessRequest = async () => {
     if (!duplicateClient) return;
     setRequestingAccess(true);
@@ -783,6 +820,22 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
       <DialogActions sx={{ px: 3, py: 2, flexShrink: 0, borderTop: '1px solid #E8ECF0', background: '#FFFFFF' }}>
         <Button onClick={onClose} sx={{ borderRadius: 2, fontWeight: 700 }}>
           Cancel
+        </Button>
+        <Button
+          onClick={() => { void handleSaveDraft(); }}
+          disabled={saving}
+          sx={{
+            borderRadius: 2,
+            fontWeight: 700,
+            color: '#D97706',
+            background: 'rgba(245, 158, 11, 0.08)',
+            border: '1px solid rgba(245, 158, 11, 0.25)',
+            '&:hover': {
+              background: 'rgba(245, 158, 11, 0.16)',
+            },
+          }}
+        >
+          Save as Draft
         </Button>
         <Box sx={{ flex: 1 }} />
         <Button

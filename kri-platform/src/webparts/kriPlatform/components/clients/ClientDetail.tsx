@@ -378,7 +378,9 @@ export default function ClientDetail({ context }: Props) {
   };
 
   const handleDeleteClient = async () => {
-    if (!client || !canManageAssignments) return;
+    if (!client) return;
+    const isDraft = client.KRIStage === 'Draft';
+    if (!canManageAssignments && (!isDraft || !hasEditAccess)) return;
     setDeleting(true);
     try {
       await deleteClient(context, client.ID);
@@ -494,6 +496,52 @@ export default function ClientDetail({ context }: Props) {
           {displayName}
         </Typography>
       </Breadcrumbs>
+
+      {safeStage === 'Draft' && (
+        <Alert
+          severity="warning"
+          sx={{
+            mb: 3,
+            borderRadius: 2.5,
+            background: 'rgba(245, 158, 11, 0.08)',
+            border: '1px solid rgba(245, 158, 11, 0.25)',
+            '& .MuiAlert-icon': { color: '#D97706' },
+          }}
+          action={
+            <Stack direction="row" spacing={1} alignItems="center">
+              {(canManageAssignments || hasEditAccess) && (
+                <Button
+                  color="error"
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setDeleteConfirmOpen(true)}
+                  sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none' }}
+                >
+                  Discard Draft
+                </Button>
+              )}
+              {hasEditAccess && (
+                <Button
+                  color="warning"
+                  size="small"
+                  variant="contained"
+                  onClick={() => void handleStageChange('Knowledge')}
+                  sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none', background: '#D97706', '&:hover': { background: '#B45309' } }}
+                >
+                  Activate & Promote to Knowledge
+                </Button>
+              )}
+            </Stack>
+          }
+        >
+          <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: '#92400E' }}>
+            Draft Contact Record
+          </Typography>
+          <Typography sx={{ fontSize: '0.82rem', color: '#B45309', mt: 0.25 }}>
+            This contact has incomplete details or was saved as a draft. You can complete the profile details and promote it to active status, or discard this draft.
+          </Typography>
+        </Alert>
+      )}
 
       <Box
         sx={{
@@ -1077,13 +1125,17 @@ export default function ClientDetail({ context }: Props) {
       </Box>
 
       <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 900 }}>Delete contact?</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900 }}>
+          {safeStage === 'Draft' ? 'Discard draft contact?' : 'Delete contact?'}
+        </DialogTitle>
         <DialogContent dividers>
-          <Alert severity="error" sx={{ borderRadius: 2, mb: 2 }}>
+          <Alert severity={safeStage === 'Draft' ? 'warning' : 'error'} sx={{ borderRadius: 2, mb: 2 }}>
             This action cannot be undone.
           </Alert>
           <Typography sx={{ color: '#4A5568', lineHeight: 1.7 }}>
-            Admin delete permanently removes this contact from KAIROS.
+            {safeStage === 'Draft'
+              ? 'Discarding will permanently remove this draft contact and its incomplete details from KAIROS.'
+              : 'Admin delete permanently removes this contact from KAIROS.'}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
@@ -1097,7 +1149,7 @@ export default function ClientDetail({ context }: Props) {
             onClick={() => { void handleDeleteClient(); }}
             sx={{ borderRadius: 2, fontWeight: 800 }}
           >
-            {deleting ? 'Deleting...' : 'Delete permanently'}
+            {deleting ? 'Deleting...' : safeStage === 'Draft' ? 'Discard draft' : 'Delete permanently'}
           </Button>
         </DialogActions>
       </Dialog>

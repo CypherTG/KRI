@@ -23,6 +23,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
 import GridViewIcon from '@mui/icons-material/GridView';
 import TableRowsIcon from '@mui/icons-material/TableRows';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { getClients, getCurrentSiteUser, isManagementAdminUser } from '../../services/graphApi';
 import { useStore } from '../../store/useStore';
@@ -35,8 +36,9 @@ import { buildCompanySummaries, normalizeLookupText } from '../../utils/lookupHe
 import { approvedClientIdsForRequestUser, canViewClient, getClientCreatorLabel, isClientOwnedByPrincipal } from '../../utils/kairosPermissions';
 import { getContactAccessRequestsForUser, KairosContactAccessRequest, upsertCompanyRegistryRecord } from '../../services/sharepointProvisioning';
 import ClientForm from './ClientForm';
+import BulkImportModal from './BulkImportModal';
 
-const STAGE_FILTER_OPTIONS = ['All', 'Knowledge', 'Rapport', 'Intimacy'];
+const STAGE_FILTER_OPTIONS = ['All', 'Draft', 'Knowledge', 'Rapport', 'Intimacy'];
 
 interface Props {
   context: WebPartContext;
@@ -67,6 +69,7 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
   const [clientsLoading, setClientsLoading] = useState(true);
   const [siteUser, setSiteUser] = useState<any>(null);
   const [accessRequests, setAccessRequests] = useState<KairosContactAccessRequest[]>([]);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   useEffect(() => {
     if (pageVariant === 'add-contact') {
       setMode('companies');
@@ -156,6 +159,8 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
   const visibleCompanies = companySummaries;
   const totalCount = mode === 'companies' ? visibleCompanies.length : visibleClients.length;
 
+  const draftCount = useMemo(() => permissionScopedClients.filter((c) => c.KRIStage === 'Draft').length, [permissionScopedClients]);
+
   const openCompanyPicker = () => {
     setCompanyPickerSession((current) => current + 1);
     setCompanyPickerValue('');
@@ -226,7 +231,7 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
           sx={{
             display: 'flex',
             alignItems: 'center',
-            gap: 2,
+            gap: 1.5,
             px: 2.5,
             py: 2,
             borderBottom: '1px solid #F0F2F5',
@@ -258,6 +263,28 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
             }}
           >
             {pageVariant === 'add-contact' ? 'Add New Company' : mode === 'clients' ? 'Add Contact' : 'Add New Company'}
+          </Button>
+
+          <Button
+            variant="outlined"
+            startIcon={<CloudUploadIcon />}
+            onClick={() => setImportModalOpen(true)}
+            sx={{
+              borderRadius: 2,
+              fontWeight: 700,
+              fontSize: '0.82rem',
+              px: 2,
+              py: 0.9,
+              borderColor: '#CBD5E1',
+              color: '#475569',
+              '&:hover': {
+                borderColor: '#6757EF',
+                color: '#6757EF',
+                background: 'rgba(103, 87, 239, 0.04)',
+              },
+            }}
+          >
+            Import Excel / CSV
           </Button>
 
           <Box sx={{ flex: 1 }} />
@@ -340,23 +367,31 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
               }}
             />
           ))}
-          {STAGE_FILTER_OPTIONS.map((opt) => (
-            <Chip
-              key={opt}
-              label={opt}
-              size="small"
-              onClick={() => setStageFilter(opt)}
-              sx={{
-                cursor: 'pointer',
-                background: stageFilter === opt ? '#6757EF' : '#F5F6FA',
-                color: stageFilter === opt ? '#FFFFFF' : '#7B8FA6',
-                fontWeight: stageFilter === opt ? 700 : 500,
-                border: 'none',
-                '&:hover': { background: stageFilter === opt ? '#5A4ADF' : '#EEF0F6' },
-                transition: 'all 0.15s',
-              }}
-            />
-          ))}
+          {STAGE_FILTER_OPTIONS.map((opt) => {
+            const isDraft = opt === 'Draft';
+            const isSelected = stageFilter === opt;
+            const label = isDraft && draftCount > 0 ? `Drafts (${draftCount})` : opt;
+            const activeBg = isDraft ? '#D97706' : '#6757EF';
+            const hoverBg = isDraft ? '#B45309' : '#5A4ADF';
+
+            return (
+              <Chip
+                key={opt}
+                label={label}
+                size="small"
+                onClick={() => setStageFilter(opt)}
+                sx={{
+                  cursor: 'pointer',
+                  background: isSelected ? activeBg : isDraft && draftCount > 0 ? 'rgba(245, 158, 11, 0.12)' : '#F5F6FA',
+                  color: isSelected ? '#FFFFFF' : isDraft && draftCount > 0 ? '#D97706' : '#7B8FA6',
+                  fontWeight: isSelected || (isDraft && draftCount > 0) ? 700 : 500,
+                  border: isDraft && !isSelected && draftCount > 0 ? '1px solid rgba(245, 158, 11, 0.3)' : 'none',
+                  '&:hover': { background: isSelected ? hoverBg : '#EEF0F6' },
+                  transition: 'all 0.15s',
+                }}
+              />
+            );
+          })}
         </Box>
 
         <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
@@ -499,33 +534,33 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
         </Box>
       </Paper>
 
-      {companyPickerOpen && (
+      {(companyPickerOpen || showNewClientForm) && (
         <>
           <Box
             onClick={closeCompanyPicker}
             sx={{
               position: 'fixed',
-              inset: 0,
-              zIndex: 1999,
-              background: 'rgba(17,24,39,0.28)',
-              backdropFilter: 'blur(1px)',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              bgcolor: 'rgba(15, 23, 42, 0.45)',
+              backdropFilter: 'blur(2px)',
+              zIndex: 999999,
             }}
           />
           <Paper
-            key={companyPickerSession}
-            elevation={18}
+            elevation={24}
             sx={{
               position: 'fixed',
-              left: '50%',
               top: '50%',
+              left: '50%',
               transform: 'translate(-50%, -50%)',
-              zIndex: 2000,
+              width: 'min(920px, calc(100vw - 32px))',
+              maxHeight: 'calc(100vh - 64px)',
               borderRadius: 3,
+              zIndex: 1000000,
               overflow: 'hidden',
-              border: '1px solid #E8ECF0',
-              boxShadow: '0 20px 60px rgba(17,24,39,0.18)',
-              width: 'min(1100px, calc(100vw - 24px))',
-              maxHeight: 'calc(100dvh - 24px)',
               display: 'flex',
               flexDirection: 'column',
             }}
@@ -601,6 +636,12 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
           </Paper>
         </>
       )}
+
+      <BulkImportModal
+        context={context}
+        open={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+      />
 
     </Box>
   );

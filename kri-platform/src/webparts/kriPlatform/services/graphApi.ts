@@ -1060,7 +1060,7 @@ export interface IClient {
   BusinessArm?: string[];
   JobTitle: string;
   ProjectName: string;
-  KRIStage: 'Knowledge' | 'Rapport' | 'Intimacy' | string;
+  KRIStage: 'Draft' | 'Knowledge' | 'Rapport' | 'Intimacy' | string;
   LinkedInURL: string;
   LinkedInProfile?: string;
   InstagramHandle: string;
@@ -1830,7 +1830,7 @@ const EXCEL_COLUMN_MAP: Record<string, string> = {
 /** Columns to explicitly skip (not mapped to any IClient field) */
 const SKIP_COLUMNS = new Set(['record id', 'recordid', 'record_id', 'id', 'title']);
 
-const VALID_KRI_STAGES = ['Knowledge', 'Rapport', 'Intimacy'];
+const VALID_KRI_STAGES = ['Draft', 'Knowledge', 'Rapport', 'Intimacy'];
 
 export interface ImportResult {
   created: number;

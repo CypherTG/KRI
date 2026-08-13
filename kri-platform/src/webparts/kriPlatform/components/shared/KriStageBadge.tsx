@@ -2,6 +2,7 @@ import React from 'react';
 import { Box } from '@mui/material';
 
 export const STAGE_CONFIG = {
+  Draft: { bg: 'rgba(245,158,11,0.14)', color: '#D97706', label: 'Draft' },
   Knowledge: { bg: 'rgba(33,150,243,0.12)', color: '#1565C0', label: 'Knowledge' },
   Rapport: { bg: 'rgba(255,112,67,0.12)', color: '#BF360C', label: 'Rapport' },
   Intimacy: { bg: 'rgba(0,191,165,0.12)', color: '#00695C', label: 'Intimacy' },
