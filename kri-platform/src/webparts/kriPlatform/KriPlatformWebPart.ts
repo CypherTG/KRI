@@ -3,7 +3,7 @@ import * as ReactDom from 'react-dom';
 import { Version } from '@microsoft/sp-core-library';
 import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
 import App from './components/App';
-import launchCard from './assets/kairos-launch-card.png';
+import { KairosLauncher } from './components/launcher/KairosLauncher';
 import { normalizeKriSiteUrl, setKriDataSiteUrlOverride } from './services/siteConfig';
 
 export default class KriPlatformWebPart
@@ -102,59 +102,15 @@ export default class KriPlatformWebPart
     this.domElement.style.minHeight = 'unset';
     this.domElement.style.height = 'auto';
 
-    const launcher = React.createElement(
-      'div',
-      {
-        style: {
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '0',
-          background: 'transparent',
-          boxSizing: 'border-box',
-        },
+    const launcher = React.createElement(KairosLauncher, {
+      onOpen: () => {
+        this.isLaunched = true;
+        this.render();
       },
-        React.createElement(
-          'div',
-          {
-            role: 'button',
-            tabIndex: 0,
-          onClick: () => {
-            this.isLaunched = true;
-            this.render();
-          },
-          onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              this.isLaunched = true;
-              this.render();
-            }
-          },
-          style: {
-            width: '100%',
-            height: '180px',
-            borderRadius: '8px',
-            overflow: 'hidden',
-            boxShadow: '0 1.6px 3.6px rgba(0,0,0,0.132), 0 0.3px 0.9px rgba(0,0,0,0.108)',
-            border: '1px solid rgba(0,0,0,0.08)',
-            cursor: 'pointer',
-            outline: 'none',
-            background: '#f5f5f5',
-            flexShrink: 0,
-          },
-        },
-        React.createElement('img', {
-          src: launchCard,
-          alt: 'Open KAIROS launch card',
-          style: {
-            display: 'block',
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain',
-          },
-        }),
-      ),
-    );
+      title: 'KAIROS',
+      description: 'Client Relationship Indicators & Key Network Management',
+      buttonLabel: 'Launch KAIROS',
+    });
 
     ReactDom.render(launcher, this.domElement);
   }
