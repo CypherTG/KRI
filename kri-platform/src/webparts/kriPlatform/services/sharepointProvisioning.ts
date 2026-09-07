@@ -112,7 +112,10 @@ function rewriteToAppContextSiteUrl(webUrl: string, url: string): string {
 
 function requestAttempts(webUrl: string, url: string): string[] {
   const safeUrl = String(url || '');
-  return [safeUrl, rewriteToAppContextSiteUrl(webUrl, safeUrl)].filter((attempt, index, list) => attempt && list.indexOf(attempt) === index);
+  const rewritten = rewriteToAppContextSiteUrl(webUrl, safeUrl);
+  // Deduplicate: if rewrite produced a different URL, try it first; also try original as fallback
+  if (rewritten !== safeUrl) return [rewritten, safeUrl];
+  return [safeUrl];
 }
 
 function escapeXml(value: string): string {
@@ -145,7 +148,10 @@ async function apiFetch(webUrl: string, url: string, options: RequestInit = {}):
 }
 
 async function getRequestDigest(webUrl: string): Promise<string> {
-  const response = await apiFetch(webUrl, `${webUrl}/_api/contextinfo`, {
+  // For cross-site AppContextSite calls the digest MUST come from the hosting
+  // site (the page the user's browser is on), not the remote data site.
+  const hostingWebUrl = getPageWebUrl() || String(webUrl || '').replace(/\/$/, '');
+  const response = await apiFetch(hostingWebUrl, `${hostingWebUrl}/_api/contextinfo`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json;odata=nometadata',
@@ -832,8 +838,132 @@ export async function seedLookupListsFromCurrentRegistry(context: WebPartContext
   return steps;
 }
 
+function cleanItemPayload(fields: Record<string, any>): Record<string, any> {
+  const result: Record<string, any> = {};
+  const ignored = new Set(['id', 'ID', 'author', 'Author', 'editor', 'Editor', 'created', 'Created', 'modified', 'Modified', 'attachments', 'AttachmentFiles', '__metadata']);
+  Object.keys(fields).forEach((key) => {
+    if (ignored.has(key)) return;
+    const val = fields[key];
+    if (val === undefined || val === null || val === '') return;
+    if (typeof val === 'object' && !Array.isArray(val) && (val?.Id || val?.ID || val?.LookupId)) {
+      const id = Number(val.Id || val.ID || val.LookupId);
+      if (!Number.isNaN(id) && id > 0) {
+        result[`${key}Id`] = id;
+      }
+      return;
+    }
+    result[key] = val;
+  });
+  return result;
+}
+
+function buildFormValuesForValidateUpdate(fields: Record<string, any>): Array<{ FieldName: string; FieldValue: string }> {
+  const ignored = new Set([
+    'id', 'ID', 'author', 'Author', 'editor', 'Editor',
+    'created', 'Created', 'modified', 'Modified',
+    'attachments', 'Attachments', 'attachmentfiles', 'AttachmentFiles',
+    'odata.type', 'odata.id', 'odata.editLink', 'odata.etag', 'odata.metadata', '__metadata'
+  ]);
+  const formValues: Array<{ FieldName: string; FieldValue: string }> = [];
+
+  Object.keys(fields).forEach((key) => {
+    if (ignored.has(key)) return;
+    const val = fields[key];
+    if (val === undefined || val === null || val === '') return;
+
+    let fieldName = key;
+    let strValue = '';
+
+    if (Array.isArray(val)) {
+      strValue = val
+        .map((v) => (typeof v === 'object' ? v?.Title || v?.Value || String(v) : String(v)))
+        .filter(Boolean)
+        .join(';#');
+    } else if (typeof val === 'object') {
+      if (val?.Email || val?.LoginName || val?.UserPrincipalName) {
+        const emailOrLogin = val.Email || val.LoginName || val.UserPrincipalName;
+        strValue = `[{'Key':'${emailOrLogin}'}]`;
+      } else if (val?.Id || val?.ID || val?.LookupId) {
+        strValue = String(val.Id || val.ID || val.LookupId);
+      } else {
+        strValue = val?.Title || val?.Value || val?.Name || '';
+      }
+    } else if (typeof val === 'boolean') {
+      strValue = val ? '1' : '0';
+    } else {
+      strValue = String(val);
+    }
+
+    if (strValue) {
+      formValues.push({ FieldName: fieldName, FieldValue: strValue });
+    }
+  });
+
+  return formValues;
+}
+
+function extractItemIdFromValidateResult(data: any): number | null {
+  const list = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.value)
+      ? data.value
+      : Array.isArray(data?.d?.AddValidateUpdateItemUsingPath?.results)
+        ? data.d.AddValidateUpdateItemUsingPath.results
+        : Array.isArray(data?.d?.results)
+          ? data.d.results
+          : Array.isArray(data?.d)
+            ? data.d
+            : [];
+  for (const entry of list) {
+    const id = Number(entry?.ItemId || entry?.Id || entry?.ID);
+    if (Number.isFinite(id) && id > 0) {
+      return id;
+    }
+  }
+  return null;
+}
+
 async function ensureListItem(webUrl: string, digest: string, listName: string, fields: Record<string, any>): Promise<any> {
-  const body = JSON.stringify(fields);
+  // Strategy 1: AddValidateUpdateItemUsingPath
+  try {
+    const formValues = buildFormValuesForValidateUpdate(fields);
+    if (formValues.length > 0) {
+      const validatePayload = JSON.stringify({
+        listItemCreateInfo: {
+          FolderPath: { DecodedUrl: '' },
+          UnderlyingObjectType: 0,
+        },
+        formValues,
+        bNewDocumentUpdate: false,
+      });
+      const validateUrl = `${listUrl(webUrl, listName)}/AddValidateUpdateItemUsingPath`;
+
+      for (const attempt of requestAttempts(webUrl, validateUrl)) {
+        try {
+          const response = await fetch(attempt, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              Accept: 'application/json;odata=nometadata',
+              'Content-Type': 'application/json;odata=nometadata',
+              'X-RequestDigest': digest,
+            },
+            body: validatePayload,
+          });
+          if (response.ok) {
+            const resJson = await response.json();
+            const newItemId = extractItemIdFromValidateResult(resJson);
+            if (newItemId) {
+              return { Id: newItemId, ID: String(newItemId), ...fields };
+            }
+          }
+        } catch { /* continue */ }
+      }
+    }
+  } catch { /* continue */ }
+
+  // Strategy 2: Direct REST /items
+  const body = JSON.stringify(cleanItemPayload(fields));
   let lastError: unknown = null;
   for (const attempt of requestAttempts(webUrl, `${listUrl(webUrl, listName)}/items`)) {
     try {
@@ -863,7 +993,37 @@ async function ensureListItem(webUrl: string, digest: string, listName: string, 
 async function updateListItem(webUrl: string, digest: string, listName: string, itemId: string | number, fields: Record<string, any>): Promise<void> {
   const safeId = String(itemId || '').trim();
   if (!safeId) return;
-  const body = JSON.stringify(fields);
+
+  // Strategy 1: validateUpdateListItem
+  try {
+    const formValues = buildFormValuesForValidateUpdate(fields);
+    if (formValues.length > 0) {
+      const validatePayload = JSON.stringify({
+        formValues,
+        bNewDocumentUpdate: false,
+      });
+      const validateUrl = `${listUrl(webUrl, listName)}/items(${safeId})/validateUpdateListItem`;
+
+      for (const attempt of requestAttempts(webUrl, validateUrl)) {
+        try {
+          const response = await fetch(attempt, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              Accept: 'application/json;odata=nometadata',
+              'Content-Type': 'application/json;odata=nometadata',
+              'X-RequestDigest': digest,
+            },
+            body: validatePayload,
+          });
+          if (response.ok) return;
+        } catch { /* continue */ }
+      }
+    }
+  } catch { /* continue */ }
+
+  // Strategy 2: Direct MERGE
+  const body = JSON.stringify(cleanItemPayload(fields));
   let lastError: unknown = null;
   for (const attempt of requestAttempts(webUrl, `${listUrl(webUrl, listName)}/items(${safeId})`)) {
     try {

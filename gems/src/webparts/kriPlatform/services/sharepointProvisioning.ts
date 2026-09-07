@@ -1,5 +1,6 @@
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { getClients, IClient } from './graphApi';
+import { getPageWebUrl, rewriteToAppContextSiteUrl, resolveGemsDataSiteUrl } from './siteConfig';
 
 type ProvisionStep = {
   title: string;
@@ -96,7 +97,12 @@ function escapeXml(value: string): string {
 }
 
 export async function getRequestDigest(webUrl: string): Promise<string> {
-  const response = await fetch(`${webUrl}/_api/contextinfo`, {
+  // For cross-site AppContextSite calls the digest MUST come from the hosting
+  // site (the page the user's browser is on). Fall back to the data-site URL
+  // only when hosting site detection fails (e.g. localhost workbench where
+  // the hosting site IS the data site).
+  const hostingWebUrl = getPageWebUrl() || String(webUrl || '').replace(/\/$/, '');
+  const response = await fetch(`${hostingWebUrl}/_api/contextinfo`, {
     method: 'POST',
     credentials: 'include',
     headers: {
@@ -110,7 +116,8 @@ export async function getRequestDigest(webUrl: string): Promise<string> {
 }
 
 export async function getJson(webUrl: string, url: string): Promise<any> {
-  const response = await fetch(url, {
+  const rewrittenUrl = rewriteToAppContextSiteUrl(url);
+  const response = await fetch(rewrittenUrl, {
     credentials: 'include',
     headers: {
       Accept: 'application/json;odata=nometadata',
@@ -143,7 +150,7 @@ export async function waitForListAvailability(webUrl: string, title: string, att
 
 export async function createList(webUrl: string, digest: string, title: string, description: string, baseTemplate = 100): Promise<boolean> {
   if (await listExists(webUrl, title)) return false;
-  const response = await fetch(`${webUrl}/_api/web/lists`, {
+  const response = await fetch(rewriteToAppContextSiteUrl(`${webUrl}/_api/web/lists`), {
     method: 'POST',
     credentials: 'include',
     headers: {
@@ -209,7 +216,7 @@ export function fieldXmlUser(name: string, displayName: string, required = false
 export async function ensureField(webUrl: string, digest: string, listName: string, internalName: string, schemaXml: string, fieldMap: Record<string, string>): Promise<boolean> {
   if (fieldMap[internalName]) return false;
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const response = await fetch(`${listUrl(webUrl, listName)}/fields/CreateFieldAsXml`, {
+    const response = await fetch(rewriteToAppContextSiteUrl(`${listUrl(webUrl, listName)}/fields/CreateFieldAsXml`), {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -262,7 +269,7 @@ export async function ensureListWithFields(
 }
 
 async function setListAttachmentsEnabled(webUrl: string, digest: string, title: string, enabled: boolean): Promise<void> {
-  const response = await fetch(`${listUrl(webUrl, title)}`, {
+  const response = await fetch(rewriteToAppContextSiteUrl(`${listUrl(webUrl, title)}`), {
     method: 'POST',
     credentials: 'include',
     headers: {
@@ -526,7 +533,7 @@ function buildLookupSeedPayload(displayName: string, keyField: string, sortOrder
 }
 
 export async function seedLookupListsFromCurrentRegistry(context: WebPartContext): Promise<SeedStep[]> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const digest = await getRequestDigest(webUrl);
   const clients = await getClients(context).catch(() => [] as IClient[]);
   const companyFieldMap = await getFieldMap(webUrl, LISTS.companies);
@@ -625,7 +632,7 @@ export async function upsertCompanyRegistryRecord(
   contactCount = 0,
   summary = ''
 ): Promise<void> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const digest = await getRequestDigest(webUrl);
   const normalizedKey = String(companyKey || '').trim().toLowerCase();
   const normalizedName = String(companyName || '').trim();
@@ -664,7 +671,7 @@ export async function saveCompanyAcumenFile(
   companyName: string,
   file: File
 ): Promise<void> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const digest = await getRequestDigest(webUrl);
 
   // 1. Ensure metadata list exists
@@ -702,7 +709,7 @@ export async function getCompanyAcumenRecords(
   context: WebPartContext,
   companyKey: string
 ): Promise<CompanyAcumenRecord[]> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const normalizedKey = String(companyKey || '').trim().toLowerCase();
   if (!normalizedKey) return [];
   const data = await getJson(
@@ -762,7 +769,7 @@ async function getLookupOptions(
   listName: string,
   candidates: string[],
 ): Promise<string[]> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const select = Array.from(new Set(['Id', ...candidates])).join(',');
   const data = await getJson(
     webUrl,
@@ -780,7 +787,7 @@ export async function getJobTitleLookupOptions(context: WebPartContext): Promise
 }
 
 export async function getClientBiodataRecord(context: WebPartContext, contactId: string): Promise<BiodataRecord | null> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const safeId = String(contactId || '').trim();
   if (!safeId) return null;
   const data = await getJson(
@@ -852,7 +859,7 @@ export async function saveClientBiodataRecord(
   payload: Partial<BiodataRecord>,
   profilePhotoFile?: File | null
 ): Promise<BiodataRecord> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const digest = await getRequestDigest(webUrl);
   await ensureRuntimeStorageReady(webUrl, digest, LISTS.biodata);
   const safeId = String(contactId || '').trim();
@@ -1322,7 +1329,7 @@ async function getGemsInteractionsWithQuery(context: WebPartContext, filter?: st
 
   for (const clientField of GEMS_CLIENT_FIELD_CANDIDATES) {
     try {
-      const data = await getJson(context.pageContext.web.absoluteUrl, buildGemsInteractionsQuery(context.pageContext.web.absoluteUrl, clientField, filter));
+      const data = await getJson(resolveGemsDataSiteUrl(context), buildGemsInteractionsQuery(resolveGemsDataSiteUrl(context), clientField, filter));
       (data.value || []).map(normalizeGemsInteraction).forEach((item) => {
         const key = String(item.ID || `${item.ClientID}-${item.LoggedAt}-${item.Title}`);
         if (!merged.has(key)) merged.set(key, item);
@@ -1378,7 +1385,7 @@ export async function logGemsInteraction(
     scheduledDate?: string;
   }
 ): Promise<GemsInteractionRecord> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const digest = await getRequestDigest(webUrl);
   await ensureGemsInteractionsReady(webUrl, digest);
   const points = GEMS_CATEGORY_POINTS[data.category] ?? 0;
@@ -1478,7 +1485,7 @@ export async function updateGemsInteractionClassification(
     category?: string;
   }
 ): Promise<void> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const digest = await getRequestDigest(webUrl);
   const safeId = String(itemId || '').trim();
   if (!safeId) return;

@@ -20,7 +20,9 @@ function rewriteToAppContextSiteUrl(context: WebPartContext, url: string): strin
   const targetWebUrl = resolveKriDataSiteUrl(context).replace(/\/$/, '');
   const currentWebUrl = getPageWebUrl();
   const safeUrl = String(url || '');
-  if (!currentWebUrl || !targetWebUrl || !safeUrl.startsWith(targetWebUrl)) return safeUrl;
+  // If hosting site IS the data site (or we can't detect), no rewrite needed
+  if (!currentWebUrl || !targetWebUrl || currentWebUrl === targetWebUrl) return safeUrl;
+  if (!safeUrl.startsWith(targetWebUrl)) return safeUrl;
   const relative = safeUrl.slice(targetWebUrl.length).replace(/^\/+/, '');
   const [pathPart, queryPart] = relative.split('?');
   const apiPath = pathPart.replace(/^\/?_api\//, '');
@@ -31,7 +33,10 @@ function rewriteToAppContextSiteUrl(context: WebPartContext, url: string): strin
 
 function requestAttempts(context: WebPartContext, url: string): string[] {
   const safeUrl = String(url || '');
-  return [safeUrl, rewriteToAppContextSiteUrl(context, safeUrl)].filter((attempt, index, list) => attempt && list.indexOf(attempt) === index);
+  const rewritten = rewriteToAppContextSiteUrl(context, safeUrl);
+  // Deduplicate: if rewrite produced a different URL, try it first; also try original as fallback
+  if (rewritten !== safeUrl) return [rewritten, safeUrl];
+  return [safeUrl];
 }
 
 function normalizeFieldAlias(value: string): string {
@@ -59,17 +64,35 @@ function extractRestArray(data: any): any[] {
 
 async function getJson(context: WebPartContext, url: string): Promise<any> {
   const safeUrl = String(url || '');
-  let lastError: unknown = null;
-  for (const attempt of requestAttempts(context, safeUrl)) {
+  const [appContextUrl, directUrl] = requestAttempts(context, safeUrl);
+  const isCrossSite = appContextUrl !== directUrl;
+
+  if (isCrossSite) {
+    // Cross-site: use raw fetch() so SharePoint auth cookies are sent directly.
+    // spHttpClient validates URLs against the hosting site and blocks AppContextSite calls.
     try {
-      const res: SPHttpClientResponse = await context.spHttpClient.get(attempt, SPHttpClient.configurations.v1, READ_OPTS);
-      if (!res.ok) throw new Error(`[SPREST] GET ${attempt} -> ${res.status}`);
+      const res = await fetch(appContextUrl, {
+        credentials: 'include',
+        headers: {
+          Accept: 'application/json;odata=nometadata',
+          'odata-version': '',
+        },
+      });
+      if (res.ok) return res.json();
+      const detail = await res.text().catch(() => '');
+      throw new Error(`[SPREST] GET ${appContextUrl} -> ${res.status}: ${detail.slice(0, 200)}`);
+    } catch (crossErr) {
+      // Last-resort fallback: direct URL (works when web part is deployed on the data site itself)
+      const res: SPHttpClientResponse = await context.spHttpClient.get(directUrl, SPHttpClient.configurations.v1, READ_OPTS);
+      if (!res.ok) throw new Error(`[SPREST] GET ${directUrl} -> ${res.status}`);
       return res.json();
-    } catch (err) {
-      lastError = err;
     }
   }
-  throw lastError || new Error(`[SPREST] GET ${safeUrl} failed`);
+
+  // Same-site: use spHttpClient (handles SPFx auth tokens automatically)
+  const res: SPHttpClientResponse = await context.spHttpClient.get(safeUrl, SPHttpClient.configurations.v1, READ_OPTS);
+  if (!res.ok) throw new Error(`[SPREST] GET ${safeUrl} -> ${res.status}`);
+  return res.json();
 }
 
 async function getListItems(context: WebPartContext, listName: string, filter?: string, expand?: string): Promise<any[]> {
@@ -619,15 +642,17 @@ export async function getCurrentUserPhotoUrl(context: WebPartContext): Promise<s
 const schemaCache: Record<string, Record<string, string>> = {};
 
 async function getRequestDigest(webUrl: string): Promise<string> {
-  const currentWebUrl = getPageWebUrl() || String(webUrl || '').replace(/\/$/, '');
-  const resp = await fetch(`${currentWebUrl}/_api/contextinfo`, {
+  // For cross-site AppContextSite calls the digest MUST come from the hosting
+  // site (the page the user's browser is on), not the remote data site.
+  const hostingWebUrl = getPageWebUrl() || String(webUrl || '').replace(/\/$/, '');
+  const resp = await fetch(`${hostingWebUrl}/_api/contextinfo`, {
     method: 'POST',
     headers: { Accept: 'application/json;odata=nometadata' },
     credentials: 'include',
   });
   if (!resp.ok) throw new Error(`[SPREST] contextinfo -> ${resp.status}`);
   const json = await resp.json();
-  return json.FormDigestValue;
+  return json.FormDigestValue || json?.d?.GetContextWebInformation?.FormDigestValue || '';
 }
 
 interface FieldInfo {
@@ -647,20 +672,307 @@ async function getFieldTypes(context: WebPartContext, webUrl: string, listName: 
   return map;
 }
 
-function formatFieldsForWrite(fields: Record<string, any>, schema: Record<string, string>): Record<string, any> {
-  const result: Record<string, any> = {};
+const KNOWN_LIST_SCHEMAS: Record<string, Record<string, string>> = {
+  KRI_Clients: {
+    Title: 'Text',
+    FirstName: 'Text',
+    LastName: 'Text',
+    Gender: 'Choice',
+    Email: 'Text',
+    Phone: 'Text',
+    CompanyName: 'Text',
+    BusinessArm: 'MultiChoice',
+    JobTitle: 'Text',
+    ProjectName: 'Text',
+    KRIStage: 'Choice',
+    LinkedInURL: 'Text',
+    InstagramHandle: 'Text',
+    KCCContactPerson: 'User',
+    KRISecondaryContact: 'User',
+    BirthdayDate: 'DateTime',
+    DateRegistered: 'DateTime',
+    LastContactDate: 'DateTime',
+    Notes: 'Note',
+    NeedsOpportunity: 'Note',
+    PhotoUrl: 'Text',
+    IsActive: 'Boolean',
+  },
+  KRI_StageHistory: {
+    Title: 'Text',
+    ClientID: 'Lookup',
+    Client: 'Lookup',
+    PreviousStage: 'Choice',
+    NewStage: 'Choice',
+    ChangedBy: 'User',
+    ChangedDate: 'DateTime',
+    Reason: 'Note',
+    Notes: 'Note',
+  },
+  KRI_Communications: {
+    Title: 'Text',
+    ClientID: 'Lookup',
+    Client: 'Lookup',
+    Type: 'Choice',
+    Subject: 'Text',
+    Notes: 'Note',
+    SentDate: 'DateTime',
+    Date: 'DateTime',
+    InitiatedBy: 'User',
+    Status: 'Choice',
+  },
+  KRI_Engagements: {
+    Title: 'Text',
+    ClientID: 'Lookup',
+    Client: 'Lookup',
+    EngagementName: 'Text',
+    BusinessArm: 'Choice',
+    Stage: 'Choice',
+    Status: 'Choice',
+    EstimatedValue: 'Number',
+    Value: 'Number',
+    StartDate: 'DateTime',
+    ExpectedCloseDate: 'DateTime',
+    ClosedDate: 'DateTime',
+    LeadOwner: 'User',
+    Owner: 'User',
+    Notes: 'Note',
+  },
+  KRI_Automations: {
+    Title: 'Text',
+    TriggerType: 'Choice',
+    ActionType: 'Choice',
+    TargetStage: 'Choice',
+    ClientID: 'Lookup',
+    Client: 'Lookup',
+    AssignedTo: 'User',
+    IsEnabled: 'Boolean',
+    LastRunDate: 'DateTime',
+    ConfigJson: 'Note',
+    Description: 'Note',
+  },
+  KRI_Users: {
+    Title: 'Text',
+    FullName: 'Text',
+    Email: 'Text',
+    Role: 'Choice',
+    Department: 'Choice',
+    IsActive: 'Boolean',
+    TargetIntimacy: 'Number',
+    TargetRapport: 'Number',
+    TargetKnowledge: 'Number',
+  },
+  GEMS_Interactions: {
+    ClientId: 'Text',
+    ClientID: 'Text',
+    ClientName: 'Text',
+    CompanyKey: 'Text',
+    CompanyName: 'Text',
+    Agency: 'Text',
+    BusinessArm: 'Choice',
+    InteractionType: 'Choice',
+    Category: 'Choice',
+    FinalClassification: 'Text',
+    InfluencePercent: 'Text',
+    Points: 'Text',
+    Notes: 'Note',
+    Justification: 'Note',
+    ReviewStatus: 'Choice',
+    WeekStart: 'DateTime',
+    ReportingMonth: 'Text',
+    LoggedBy: 'Text',
+    LoggedAt: 'DateTime',
+    TargetUser: 'Text',
+    TargetUserId: 'Text',
+    KRIClassification: 'Text',
+    ExecutiveInvolvementRequested: 'Boolean',
+    ExecutiveMonthlyPointsAtLog: 'Text',
+    FollowUpRequired: 'Boolean',
+    FollowUpDate: 'DateTime',
+    ScheduledDate: 'DateTime',
+  },
+  GEMS_Compliance: {
+    EntityType: 'Choice',
+    EntityId: 'Text',
+    EntityName: 'Text',
+    ComplianceType: 'Choice',
+    Status: 'Choice',
+    IssueDate: 'DateTime',
+    ExpiryDate: 'DateTime',
+    RenewalDate: 'DateTime',
+    GoverningBody: 'Text',
+    ReferenceNumber: 'Text',
+    Description: 'Note',
+    Notes: 'Note',
+    AssignedTo: 'Text',
+    DocumentsJson: 'Note',
+    LastCheckedDate: 'DateTime',
+    AlertSent: 'Boolean',
+  },
+  GEMS_Actions: {
+    EntityType: 'Choice',
+    EntityId: 'Text',
+    EntityName: 'Text',
+    ActionType: 'Choice',
+    Priority: 'Choice',
+    Status: 'Choice',
+    DueDate: 'DateTime',
+    CompletedDate: 'DateTime',
+    AssignedTo: 'Text',
+    Description: 'Note',
+    Source: 'Text',
+    SourceId: 'Text',
+    Outcome: 'Text',
+    CreatedBy: 'Text',
+    CreatedAt: 'DateTime',
+  },
+  GEMS_AuditLog: {
+    EntityType: 'Text',
+    EntityId: 'Text',
+    Action: 'Choice',
+    FieldName: 'Text',
+    OldValue: 'Note',
+    NewValue: 'Note',
+    UserName: 'Text',
+    UserEmail: 'Text',
+    Timestamp: 'DateTime',
+    Source: 'Text',
+    Details: 'Note',
+  },
+};
+
+const READONLY_SYSTEM_FIELDS = new Set([
+  'id',
+  'ID',
+  'author',
+  'Author',
+  'editor',
+  'Editor',
+  'created',
+  'Created',
+  'modified',
+  'Modified',
+  'attachments',
+  'Attachments',
+  'attachmentfiles',
+  'AttachmentFiles',
+  'odata.type',
+  'odata.id',
+  'odata.editLink',
+  'odata.etag',
+  'odata.metadata',
+  '__metadata',
+]);
+
+function buildFormValuesForValidateUpdate(fields: Record<string, any>): Array<{ FieldName: string; FieldValue: string }> {
+  const ignored = new Set([
+    'id', 'ID', 'author', 'Author', 'editor', 'Editor',
+    'created', 'Created', 'modified', 'Modified',
+    'attachments', 'Attachments', 'attachmentfiles', 'AttachmentFiles',
+    'odata.type', 'odata.id', 'odata.editLink', 'odata.etag', 'odata.metadata', '__metadata'
+  ]);
+  const formValues: Array<{ FieldName: string; FieldValue: string }> = [];
 
   Object.keys(fields).forEach((key) => {
+    if (ignored.has(key)) return;
     const val = fields[key];
     if (val === undefined || val === null || val === '') return;
 
-    const fieldType = schema[key] || '';
+    let fieldName = key;
+    let strValue = '';
+
+    if (Array.isArray(val)) {
+      strValue = val
+        .map((v) => (typeof v === 'object' ? v?.Title || v?.Value || String(v) : String(v)))
+        .filter(Boolean)
+        .join(';#');
+    } else if (typeof val === 'object') {
+      if (val?.Email || val?.LoginName || val?.UserPrincipalName) {
+        const emailOrLogin = val.Email || val.LoginName || val.UserPrincipalName;
+        strValue = `[{'Key':'${emailOrLogin}'}]`;
+      } else if (val?.Id || val?.ID || val?.LookupId) {
+        strValue = String(val.Id || val.ID || val.LookupId);
+      } else {
+        strValue = val?.Title || val?.Value || val?.Name || '';
+      }
+    } else if (typeof val === 'boolean') {
+      strValue = val ? '1' : '0';
+    } else {
+      strValue = String(val);
+    }
+
+    if (strValue) {
+      formValues.push({ FieldName: fieldName, FieldValue: strValue });
+    }
+  });
+
+  return formValues;
+}
+
+function extractItemIdFromValidateResult(data: any): number | null {
+  const list = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.value)
+      ? data.value
+      : Array.isArray(data?.d?.AddValidateUpdateItemUsingPath?.results)
+        ? data.d.AddValidateUpdateItemUsingPath.results
+        : Array.isArray(data?.d?.results)
+          ? data.d.results
+          : Array.isArray(data?.d)
+            ? data.d
+            : [];
+  for (const entry of list) {
+    const id = Number(entry?.ItemId || entry?.Id || entry?.ID);
+    if (Number.isFinite(id) && id > 0) {
+      return id;
+    }
+  }
+  return null;
+}
+
+function formatFieldsForWrite(fields: Record<string, any>, schema: Record<string, string>, listName?: string): Record<string, any> {
+  const result: Record<string, any> = {};
+  const staticSchema = (listName && KNOWN_LIST_SCHEMAS[listName]) || {};
+  const effectiveSchema = { ...staticSchema, ...schema };
+
+  Object.keys(fields).forEach((key) => {
+    if (READONLY_SYSTEM_FIELDS.has(key)) return;
+    const val = fields[key];
+    if (val === undefined || val === null || val === '') return;
+
+    // Handle lookup/user ID keys directly (e.g. KCCContactPersonId)
+    if (key.endsWith('Id') || key.endsWith('ID')) {
+      const numVal = typeof val === 'number' ? val : parseInt(String(val), 10);
+      if (!Number.isNaN(numVal) && numVal > 0) {
+        result[key] = numVal;
+      }
+      return;
+    }
+
+    const fieldType = effectiveSchema[key] || '';
+
+    // Check if key represents a User or Lookup field
+    const isUserOrLookup = fieldType === 'User' || fieldType === 'Lookup' || fieldType === 'Person' ||
+      key === 'KCCContactPerson' || key === 'KRISecondaryContact' || key === 'LeadOwner' || key === 'AssignedTo' || key === 'InitiatedBy' || key === 'ChangedBy';
+
+    if (isUserOrLookup) {
+      const resolved = typeof val === 'number'
+        ? val
+        : typeof val === 'object' && (val?.Id || val?.ID || val?.LookupId)
+          ? Number(val.Id || val.ID || val.LookupId)
+          : parseInt(String(val), 10);
+      if (!Number.isNaN(resolved) && resolved > 0) {
+        result[`${key}Id`] = resolved;
+      }
+      // Never include the raw user object
+      return;
+    }
+
     switch (fieldType) {
       case 'MultiChoice':
       case 'ChoiceMulti': {
         const values = Array.isArray(val) ? val : [val];
         const stringValues = values.map((entry) => String(entry)).filter(Boolean);
-        result[key] = { results: stringValues };
+        result[key] = stringValues;
         break;
       }
       case 'Choice':
@@ -668,27 +980,18 @@ function formatFieldsForWrite(fields: Record<string, any>, schema: Record<string
       case 'Note': {
         if (Array.isArray(val)) {
           result[key] = val.filter(Boolean).join(', ');
+        } else if (typeof val === 'object') {
+          result[key] = val?.Title || val?.Value || val?.Name || String(val);
         } else {
           result[key] = String(val);
         }
         break;
       }
       case 'URL': {
-        const urlStr = String(val);
-        const fullUrl = urlStr.match(/^https?:\/\//) ? urlStr : `https://${urlStr}`;
-        result[key] = { Url: fullUrl, Description: fullUrl };
-        break;
-      }
-      case 'Lookup':
-      case 'User':
-      case 'Person': {
-        const resolved = typeof val === 'number'
-          ? val
-          : typeof val === 'object' && (val?.Id || val?.ID || val?.LookupId)
-            ? Number(val.Id || val.ID || val.LookupId)
-            : parseInt(String(val), 10);
-        if (!Number.isNaN(resolved) && resolved > 0) {
-          result[`${key}Id`] = resolved;
+        const urlStr = typeof val === 'object' ? String(val?.Url || val?.URL || '') : String(val || '');
+        const fullUrl = urlStr ? (urlStr.match(/^https?:\/\//) ? urlStr : `https://${urlStr}`) : '';
+        if (fullUrl) {
+          result[key] = fullUrl;
         }
         break;
       }
@@ -700,9 +1003,9 @@ function formatFieldsForWrite(fields: Record<string, any>, schema: Record<string
               if (typeof v === 'number') return v;
               return Number(v?.Id || v?.ID || v?.LookupId);
             })
-            .filter((v) => Number.isFinite(v))
+            .filter((v) => Number.isFinite(v) && v > 0)
           : [];
-        if (resolved.length) result[`${key}Id`] = { results: resolved };
+        if (resolved.length) result[`${key}Id`] = resolved;
         break;
       }
       case 'Number':
@@ -715,12 +1018,24 @@ function formatFieldsForWrite(fields: Record<string, any>, schema: Record<string
       case 'DateTime':
         result[key] = typeof val === 'string' ? val : new Date(val).toISOString();
         break;
-      default:
+      default: {
         if (Array.isArray(val)) {
-          result[key] = val.filter(Boolean).join(', ');
+          if (key === 'BusinessArm') {
+            result[key] = val.map(String).filter(Boolean);
+          } else {
+            result[key] = val.filter(Boolean).join(', ');
+          }
+        } else if (typeof val === 'object') {
+          const objId = Number(val?.Id || val?.ID || val?.LookupId);
+          if (!Number.isNaN(objId) && objId > 0) {
+            result[`${key}Id`] = objId;
+          } else {
+            result[key] = val?.Title || val?.Value || val?.Name || String(val);
+          }
         } else {
           result[key] = val;
         }
+      }
     }
   });
 
@@ -733,14 +1048,162 @@ async function createListItem(context: WebPartContext, listName: string, fields:
     getRequestDigest(webUrl).catch(() => ''),
     getFieldTypes(context, webUrl, listName).catch(() => ({} as Record<string, string>)),
   ]);
-  const formattedFields: Record<string, any> = formatFieldsForWrite(fields, schema);
+
+  // Strategy 1: AddValidateUpdateItemUsingPath (Bypasses all OData JSON type constraints)
+  try {
+    const formValues = buildFormValuesForValidateUpdate(fields);
+    if (formValues.length > 0) {
+      const validatePayload = JSON.stringify({
+        listItemCreateInfo: {
+          FolderPath: { DecodedUrl: '' },
+          UnderlyingObjectType: 0,
+        },
+        formValues,
+        bNewDocumentUpdate: false,
+      });
+      const validateUrl = `${listUrl(webUrl, listName)}/AddValidateUpdateItemUsingPath`;
+
+      // 1.1 Try SPFx spHttpClient
+      try {
+        const spRes = await context.spHttpClient.post(validateUrl, SPHttpClient.configurations.v1, {
+          headers: {
+            Accept: 'application/json;odata=nometadata',
+            'Content-Type': 'application/json;odata=nometadata',
+            'odata-version': '',
+          },
+          body: validatePayload,
+        });
+        if (spRes.ok) {
+          const resJson = await spRes.json();
+          const newItemId = extractItemIdFromValidateResult(resJson);
+          if (newItemId) {
+            try {
+              const fullItem = await getSingleItem(context, listName, String(newItemId));
+              if (fullItem) return fullItem;
+            } catch {
+              return { Id: newItemId, ID: String(newItemId), ...fields };
+            }
+          }
+        }
+      } catch (spErr) {
+        console.warn(`[createListItem] AddValidateUpdateItemUsingPath via spHttpClient failed for ${listName}`, spErr);
+      }
+
+      // 1.2 Try raw fetch with AppContextSite
+      for (const attempt of requestAttempts(context, validateUrl)) {
+        try {
+          const res = await fetch(attempt, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              Accept: 'application/json;odata=nometadata',
+              'Content-Type': 'application/json;odata=nometadata',
+              'X-RequestDigest': digest,
+            },
+            body: validatePayload,
+          });
+          if (res.ok) {
+            const resJson = await res.json();
+            const newItemId = extractItemIdFromValidateResult(resJson);
+            if (newItemId) {
+              try {
+                const fullItem = await getSingleItem(context, listName, String(newItemId));
+                if (fullItem) return fullItem;
+              } catch {
+                return { Id: newItemId, ID: String(newItemId), ...fields };
+              }
+            }
+          }
+        } catch { /* continue */ }
+      }
+    }
+  } catch (validateErr) {
+    console.warn(`[createListItem] AddValidateUpdateItemUsingPath error for ${listName}`, validateErr);
+  }
+
+  // Strategy 2: Direct REST /items with 5-Round Progressive Recovery
+  const formattedFields: Record<string, any> = formatFieldsForWrite(fields, schema, listName);
   let lastError: unknown = null;
 
-  for (let attemptRound = 0; attemptRound < 4; attemptRound++) {
-    const body = JSON.stringify(formattedFields);
-    let propertyErrorRemoved = false;
+  for (let attemptRound = 0; attemptRound < 5; attemptRound++) {
+    if (attemptRound === 1) {
+      // Round 1: Flatten any arrays to strings and remove non-primitive values
+      Object.keys(formattedFields).forEach((k) => {
+        if (Array.isArray(formattedFields[k])) {
+          formattedFields[k] = formattedFields[k].filter(Boolean).join(', ');
+        } else if (typeof formattedFields[k] === 'object' && formattedFields[k] !== null) {
+          delete formattedFields[k];
+        }
+      });
+    } else if (attemptRound === 2) {
+      // Round 2: Strip optional secondary lookups and complex fields
+      delete formattedFields.KRISecondaryContactId;
+      delete formattedFields.BusinessArm;
+      delete formattedFields.NeedsOpportunity;
+      delete formattedFields.LinkedInURL;
+      delete formattedFields.PhotoUrl;
+      delete formattedFields.BirthdayDate;
+    } else if (attemptRound === 3) {
+      // Round 3: Strip user lookup fields in case site user resolution failed
+      delete formattedFields.KCCContactPersonId;
+      delete formattedFields.KRISecondaryContactId;
+    } else if (attemptRound === 4) {
+      // Round 4: Minimal guaranteed payload
+      const minimalTitle = String(formattedFields.Title || fields.Title || 'New Contact').trim();
+      const minimalFirst = String(formattedFields.FirstName || fields.FirstName || '').trim();
+      const minimalLast = String(formattedFields.LastName || fields.LastName || '').trim();
+      const minimalCompany = String(formattedFields.CompanyName || fields.CompanyName || '').trim();
+      const minimalEmail = String(formattedFields.Email || fields.Email || '').trim();
+      const minimalPhone = String(formattedFields.Phone || fields.Phone || '').trim();
+      const minimalStage = String(formattedFields.KRIStage || fields.KRIStage || 'Knowledge').trim();
 
-    for (const attempt of requestAttempts(context, `${listUrl(webUrl, listName)}/items`)) {
+      Object.keys(formattedFields).forEach((key) => delete formattedFields[key]);
+      formattedFields.Title = minimalTitle || `${minimalFirst} ${minimalLast}`.trim() || 'New Item';
+      if (minimalFirst) formattedFields.FirstName = minimalFirst;
+      if (minimalLast) formattedFields.LastName = minimalLast;
+      if (minimalCompany) formattedFields.CompanyName = minimalCompany;
+      if (minimalEmail) formattedFields.Email = minimalEmail;
+      if (minimalPhone) formattedFields.Phone = minimalPhone;
+      if (minimalStage) formattedFields.KRIStage = minimalStage;
+    }
+
+    const body = JSON.stringify(formattedFields);
+    const targetUrl = `${listUrl(webUrl, listName)}/items`;
+
+    // 2.1 Try SPFx native spHttpClient first
+    try {
+      const spRes = await context.spHttpClient.post(targetUrl, SPHttpClient.configurations.v1, {
+        headers: {
+          Accept: 'application/json;odata=nometadata',
+          'Content-Type': 'application/json;odata=nometadata',
+          'odata-version': '',
+        },
+        body,
+      });
+      if (spRes.ok) {
+        const data = await spRes.json();
+        return { ...data, Id: data.Id || data.ID, ID: String(data.Id || data.ID) };
+      }
+      // 403 = permanent permission failure — no point retrying with different payloads
+      if (spRes.status === 403) {
+        throw new Error(`SP 403: Forbidden — current user does not have write access to ${listName}`);
+      }
+      const detail = await spRes.text().catch(() => '');
+      const propMatch = detail.match(/The property '([^']+)' does not exist on type/i);
+      if (propMatch && propMatch[1]) {
+        const badProp = propMatch[1];
+        delete formattedFields[badProp];
+        if (badProp.endsWith('Id')) delete formattedFields[badProp.slice(0, -2)];
+      }
+      lastError = new Error(`SP ${spRes.status}: ${detail.slice(0, 500)}`);
+    } catch (spErr) {
+      lastError = spErr;
+      // Immediately abort all retry rounds on permission errors
+      if (String(spErr).includes('403')) throw spErr;
+    }
+
+    // 2.2 Try raw fetch with AppContextSite & direct URL attempts
+    for (const attempt of requestAttempts(context, targetUrl)) {
       try {
         const res = await fetch(attempt, {
           method: 'POST',
@@ -753,6 +1216,10 @@ async function createListItem(context: WebPartContext, listName: string, fields:
           body,
         });
         if (!res.ok) {
+          // 403 = permanent permission failure — abort immediately, no further rounds
+          if (res.status === 403) {
+            throw new Error(`SP 403: Forbidden — current user does not have write access to ${listName}`);
+          }
           const detail = await res.text().catch(() => '');
           const propMatch = detail.match(/The property '([^']+)' does not exist on type/i);
           if (propMatch && propMatch[1]) {
@@ -761,18 +1228,18 @@ async function createListItem(context: WebPartContext, listName: string, fields:
             if (badProp.endsWith('Id')) {
               delete formattedFields[badProp.slice(0, -2)];
             }
-            propertyErrorRemoved = true;
-            break;
           }
-          throw new Error(`SP ${res.status}: ${detail.slice(0, 500)}`);
+          lastError = new Error(`SP ${res.status}: ${detail.slice(0, 500)}`);
+          continue;
         }
         const data = await res.json();
         return { ...data, Id: data.Id, ID: String(data.Id) };
       } catch (error) {
         lastError = error;
+        // Immediately abort all retry rounds on permission errors
+        if (String(error).includes('403')) throw error;
       }
     }
-    if (!propertyErrorRemoved) break;
   }
   throw lastError || new Error(`SP create ${listName} failed`);
 }
@@ -783,14 +1250,112 @@ async function updateListItem(context: WebPartContext, listName: string, id: str
     getRequestDigest(webUrl).catch(() => ''),
     getFieldTypes(context, webUrl, listName).catch(() => ({} as Record<string, string>)),
   ]);
-  const formattedFields: Record<string, any> = formatFieldsForWrite(fields, schema);
+
+  // Strategy 1: validateUpdateListItem
+  try {
+    const formValues = buildFormValuesForValidateUpdate(fields);
+    if (formValues.length > 0) {
+      const validatePayload = JSON.stringify({
+        formValues,
+        bNewDocumentUpdate: false,
+      });
+      const validateUrl = `${listUrl(webUrl, listName)}/items(${id})/validateUpdateListItem`;
+
+      // 1.1 SPFx spHttpClient
+      try {
+        const spRes = await context.spHttpClient.post(validateUrl, SPHttpClient.configurations.v1, {
+          headers: {
+            Accept: 'application/json;odata=nometadata',
+            'Content-Type': 'application/json;odata=nometadata',
+            'odata-version': '',
+          },
+          body: validatePayload,
+        });
+        if (spRes.ok) return;
+      } catch { /* continue */ }
+
+      // 1.2 Fetch with AppContextSite
+      for (const attempt of requestAttempts(context, validateUrl)) {
+        try {
+          const res = await fetch(attempt, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              Accept: 'application/json;odata=nometadata',
+              'Content-Type': 'application/json;odata=nometadata',
+              'X-RequestDigest': digest,
+            },
+            body: validatePayload,
+          });
+          if (res.ok) return;
+        } catch { /* continue */ }
+      }
+    }
+  } catch { /* continue */ }
+
+  // Strategy 2: Direct MERGE /items(${id})
+  const formattedFields: Record<string, any> = formatFieldsForWrite(fields, schema, listName);
   let lastError: unknown = null;
 
-  for (let attemptRound = 0; attemptRound < 4; attemptRound++) {
-    const body = JSON.stringify(formattedFields);
-    let propertyErrorRemoved = false;
+  for (let attemptRound = 0; attemptRound < 5; attemptRound++) {
+    if (attemptRound === 1) {
+      // Round 1: Flatten any arrays to strings and remove non-primitive values
+      Object.keys(formattedFields).forEach((k) => {
+        if (Array.isArray(formattedFields[k])) {
+          formattedFields[k] = formattedFields[k].filter(Boolean).join(', ');
+        } else if (typeof formattedFields[k] === 'object' && formattedFields[k] !== null) {
+          delete formattedFields[k];
+        }
+      });
+    } else if (attemptRound === 2) {
+      // Round 2: Strip optional secondary lookups and complex fields
+      delete formattedFields.KRISecondaryContactId;
+      delete formattedFields.BusinessArm;
+      delete formattedFields.NeedsOpportunity;
+      delete formattedFields.LinkedInURL;
+      delete formattedFields.PhotoUrl;
+      delete formattedFields.BirthdayDate;
+    } else if (attemptRound === 3) {
+      // Round 3: Strip user lookup fields
+      delete formattedFields.KCCContactPersonId;
+      delete formattedFields.KRISecondaryContactId;
+    }
 
-    for (const attempt of requestAttempts(context, `${listUrl(webUrl, listName)}/items(${id})`)) {
+    const body = JSON.stringify(formattedFields);
+    const targetUrl = `${listUrl(webUrl, listName)}/items(${id})`;
+
+    // 2.1 Try SPFx native spHttpClient MERGE first
+    try {
+      const spRes = await context.spHttpClient.post(targetUrl, SPHttpClient.configurations.v1, {
+        headers: {
+          Accept: 'application/json;odata=nometadata',
+          'Content-Type': 'application/json;odata=nometadata',
+          'IF-MATCH': '*',
+          'X-HTTP-Method': 'MERGE',
+          'odata-version': '',
+        },
+        body,
+      });
+      if (spRes.ok || spRes.status === 204) return;
+      // 403 = permanent permission failure
+      if (spRes.status === 403) {
+        throw new Error(`SP 403: Forbidden — current user does not have write access to ${listName}`);
+      }
+      const detail = await spRes.text().catch(() => '');
+      const propMatch = detail.match(/The property '([^']+)' does not exist on type/i);
+      if (propMatch && propMatch[1]) {
+        const badProp = propMatch[1];
+        delete formattedFields[badProp];
+        if (badProp.endsWith('Id')) delete formattedFields[badProp.slice(0, -2)];
+      }
+      lastError = new Error(`[SPREST] MERGE ${listName}/${id} -> ${spRes.status}: ${detail.slice(0, 300)}`);
+    } catch (spErr) {
+      lastError = spErr;
+      if (String(spErr).includes('403')) throw spErr;
+    }
+
+    // 2.2 Try raw fetch with AppContextSite & direct URL attempts
+    for (const attempt of requestAttempts(context, targetUrl)) {
       try {
         const res = await fetch(attempt, {
           method: 'POST',
@@ -813,17 +1378,15 @@ async function updateListItem(context: WebPartContext, listName: string, id: str
             if (badProp.endsWith('Id')) {
               delete formattedFields[badProp.slice(0, -2)];
             }
-            propertyErrorRemoved = true;
-            break;
           }
-          throw new Error(`[SPREST] MERGE ${listName}/${id} -> ${res.status}: ${detail.slice(0, 300)}`);
+          lastError = new Error(`[SPREST] MERGE ${listName}/${id} -> ${res.status}: ${detail.slice(0, 300)}`);
+          continue;
         }
         return;
       } catch (error) {
         lastError = error;
       }
     }
-    if (!propertyErrorRemoved) break;
   }
   if (lastError) throw lastError;
 }
@@ -1586,6 +2149,33 @@ function buildSiteUserFromKriUser(user: Partial<IKRIUser>): ISiteUser {
 
 export async function seedKRIUsersFromSharePointIdentity(context: WebPartContext): Promise<IKRIUser[]> {
   const webUrl = resolveKriDataSiteUrl(context);
+
+  // Probe write access to KRI_Users before attempting any creates/updates.
+  // Non-admin users consistently get 403 on this list, which then cascades
+  // into 400 StartObject errors when the retry loop runs with stale payloads.
+  try {
+    const probeRes = await context.spHttpClient.post(
+      `${listUrl(webUrl, 'KRI_Users')}/items`,
+      SPHttpClient.configurations.v1,
+      {
+        headers: {
+          Accept: 'application/json;odata=nometadata',
+          'Content-Type': 'application/json;odata=nometadata',
+          'odata-version': '',
+        },
+        body: JSON.stringify({ __PROBE_ONLY__: true }),
+      }
+    );
+    // A 403 means no write access — silently return existing users
+    if (probeRes.status === 403) {
+      console.debug('[seedKRIUsersFromSharePointIdentity] write access denied (403), skipping seed for this user');
+      return getKRIUsers(context);
+    }
+    // Any other non-200 that isn't a validation error is fine — we will still attempt properly below
+  } catch {
+    // Network error on probe — proceed optimistically; real writes may also fail and will be caught per-item
+  }
+
   const userFields = await getFieldTypes(context, webUrl, 'KRI_Users').catch(() => ({}));
   const hasField = (name: string) => Object.prototype.hasOwnProperty.call(userFields, name);
   const photoField = 'ProfilePhoto';

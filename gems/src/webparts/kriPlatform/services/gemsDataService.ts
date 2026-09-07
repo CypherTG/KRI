@@ -9,6 +9,7 @@ import {
   normalizeGemsLookupKey,
 } from './sharepointProvisioning';
 import { GEMS_LISTS_NEW, ensureGemsRuntimeReady } from './gemsProvisioning';
+import { resolveGemsDataSiteUrl } from './siteConfig';
 
 export interface GemsComplianceRecord {
   ID: string;
@@ -171,7 +172,7 @@ async function getItems<T>(webUrl: string, url: string, normalize: (item: any) =
 // --- Compliance CRUD ---
 
 export async function getComplianceRecords(context: WebPartContext, filter?: string): Promise<GemsComplianceRecord[]> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const url = buildListQuery(webUrl, GEMS_LISTS_NEW.compliance, complianceQueryFields(), filter);
   return getItems(webUrl, url, normalizeCompliance);
 }
@@ -201,7 +202,7 @@ export async function createComplianceRecord(
     assignedTo?: string;
   }
 ): Promise<GemsComplianceRecord> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const digest = await getRequestDigest(webUrl);
   await ensureGemsRuntimeReady(webUrl, digest);
 
@@ -249,7 +250,7 @@ export async function updateComplianceRecord(
   changes: Partial<GemsComplianceRecord>,
   auditDetails?: string
 ): Promise<void> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const digest = await getRequestDigest(webUrl);
   const safeId = String(itemId || '').trim();
   if (!safeId) return;
@@ -288,7 +289,7 @@ export async function updateComplianceRecord(
 }
 
 export async function deleteComplianceRecord(context: WebPartContext, itemId: string | number): Promise<void> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const digest = await getRequestDigest(webUrl);
   const safeId = String(itemId || '').trim();
   if (!safeId) return;
@@ -313,7 +314,7 @@ export async function uploadComplianceAttachment(
   itemId: string | number,
   file: File
 ): Promise<{ fileName: string; serverRelativeUrl: string }> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const digest = await getRequestDigest(webUrl);
   const safeId = String(itemId || '').trim();
   if (!safeId) throw new Error('Item ID is required');
@@ -355,7 +356,7 @@ export async function uploadComplianceAttachment(
 }
 
 export async function getComplianceAttachments(context: WebPartContext, itemId: string | number): Promise<Array<{ fileName: string; serverRelativeUrl: string }>> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const digest = await getRequestDigest(webUrl);
   const safeId = String(itemId || '').trim();
   if (!safeId) return [];
@@ -379,7 +380,7 @@ export async function getComplianceAttachments(context: WebPartContext, itemId: 
 // --- Actions CRUD ---
 
 export async function getActionRecords(context: WebPartContext, filter?: string): Promise<GemsActionRecord[]> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const url = buildListQuery(webUrl, GEMS_LISTS_NEW.actions, actionQueryFields(), filter, 500, 'DueDate asc');
   return getItems(webUrl, url, normalizeAction);
 }
@@ -411,7 +412,7 @@ export async function createActionRecord(
     sourceId?: string;
   }
 ): Promise<GemsActionRecord> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const digest = await getRequestDigest(webUrl);
   await ensureGemsRuntimeReady(webUrl, digest);
 
@@ -459,7 +460,7 @@ export async function updateActionRecord(
   changes: Partial<GemsActionRecord>,
   auditDetails?: string
 ): Promise<void> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const digest = await getRequestDigest(webUrl);
   const safeId = String(itemId || '').trim();
   if (!safeId) return;
@@ -506,7 +507,7 @@ export async function completeActionRecord(context: WebPartContext, itemId: stri
 }
 
 export async function deleteActionRecord(context: WebPartContext, itemId: string | number): Promise<void> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const digest = await getRequestDigest(webUrl);
   const safeId = String(itemId || '').trim();
   if (!safeId) return;
@@ -537,7 +538,7 @@ export async function sendClassificationNotification(
     reviewedBy: string;
   }
 ): Promise<void> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const digest = await getRequestDigest(webUrl).catch(() => '');
   if (!digest) return;
 
@@ -560,8 +561,8 @@ GEMS Platform`;
       method: 'POST',
       credentials: 'include',
       headers: {
-        Accept: 'application/json;odata=nometadata',
-        'Content-Type': 'application/json;odata=nometadata',
+        Accept: 'application/json;odata=verbose',
+        'Content-Type': 'application/json;odata=verbose',
         'X-RequestDigest': digest,
       },
       body: JSON.stringify({
@@ -614,7 +615,7 @@ export async function writeAuditLog(
     source?: string;
   }
 ): Promise<void> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const digest = await getRequestDigest(webUrl);
   try {
     await ensureGemsRuntimeReady(webUrl, digest);
@@ -640,7 +641,7 @@ export async function writeAuditLog(
 }
 
 export async function getAuditLogs(context: WebPartContext, filter?: string): Promise<GemsAuditLogRecord[]> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const url = buildListQuery(webUrl, GEMS_LISTS_NEW.auditLog, auditLogQueryFields(), filter, 200, 'Timestamp desc');
   return getItems(webUrl, url, normalizeAuditLog);
 }
@@ -666,7 +667,7 @@ export interface GemsOperationalSummary {
 }
 
 export async function getGemsOperationalSummary(context: WebPartContext): Promise<GemsOperationalSummary> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
 
   const complianceUrl = buildListQuery(webUrl, GEMS_LISTS_NEW.compliance, ['Id', 'Status', 'ExpiryDate'], undefined, 500, 'Id desc');
   const actionsUrl = buildListQuery(webUrl, GEMS_LISTS_NEW.actions, ['Id', 'Status', 'DueDate'], undefined, 500, 'Id desc');
@@ -723,7 +724,7 @@ export interface GemsNotification {
 }
 
 export async function getCurrentUserNotifications(context: WebPartContext): Promise<GemsNotification[]> {
-  const webUrl = context.pageContext.web.absoluteUrl;
+  const webUrl = resolveGemsDataSiteUrl(context);
   const userEmail = context.pageContext.user.email || '';
   const userName = context.pageContext.user.displayName || '';
   const filter = `UserName eq '${userName.replace(/'/g, "''")}' or UserEmail eq '${userEmail.replace(/'/g, "''")}'`;
