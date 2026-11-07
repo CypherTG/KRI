@@ -1,0 +1,49 @@
+{
+  "name": "kairos-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "db:push": "node scripts/apply-schema.mjs",
+    "db:seed": "node scripts/apply-schema.mjs --seed",
+    "db:seed-data": "node scripts/seed-missing-data.mjs",
+    "test": "node scripts/run-tests.mjs",
+    "test:verification": "node scripts/run-tests.mjs verification",
+    "verify:health": "node scripts/check-deployment.mjs",
+    "verify:auth": "node scripts/check-production-auth.mjs"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.11.0",
+    "@emotion/styled": "^11.11.0",
+    "@mui/icons-material": "^5.15.0",
+    "@mui/material": "^5.15.0",
+    "@vercel/blob": "^0.23.0",
+    "bcryptjs": "^2.4.3",
+    "country-state-city": "^3.2.1",
+    "jose": "^5.9.6",
+    "nodemailer": "^10.0.12",
+    "postgres": "^3.4.9",
+    "react": "17.0.1",
+    "react-dom": "17.0.1",
+    "react-router-dom": "^6.20.0",
+    "xlsx": "^0.18.5",
+    "zustand": "^4.4.0"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^8.0.2",
+    "@types/react": "17.0.45",
+    "@types/react-dom": "17.0.17",
+    "@vercel/node": "^3.2.29",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tsx": "^4.23.15",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}
