@@ -14,7 +14,7 @@ export default methodGuard(['GET', 'POST'], async (req, res) => {
   const user = await requireSession(req);
 
   if (req.method === 'GET') {
-    const contactId = String(req.query.contactId ?? req.query.id ?? '').trim();
+    const contactId = String(req.query.contactId ?? req.query.id ?? req.query.clientId ?? '').trim();
     if (!contactId) throw new HttpError(400, 'A contact id is required.');
     await assertClientReadable(user, contactId);
 

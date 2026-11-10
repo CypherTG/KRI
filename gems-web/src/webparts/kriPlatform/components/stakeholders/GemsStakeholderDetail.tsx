@@ -107,7 +107,26 @@ export default function GemsStakeholderDetail({ context }: Props) {
   }
 
   if (!client) {
-    return <Typography sx={{ m: 5, color: '#6B7280' }}>Government stakeholder not found or not in GEMS scope.</Typography>;
+    return (
+      <Box sx={{ p: 4, maxWidth: 640, mx: 'auto', mt: 6 }}>
+        <Paper sx={{ p: 4, borderRadius: 3, textAlign: 'center', border: '1px solid #E8ECF0' }}>
+          <Typography sx={{ fontWeight: 800, fontSize: '1.15rem', color: '#1A1D23', mb: 1 }}>
+            Stakeholder Not Found or Out of Scope
+          </Typography>
+          <Typography sx={{ fontSize: '0.86rem', color: '#6B7280', mb: 3 }}>
+            This contact either does not exist or does not belong to one of the eight monitored government agencies (NUPRC, NUIMS, NCDMB, NEPL, NNPC, NIMASA, ENSERV, NMDPRA).
+          </Typography>
+          <Button
+            variant="contained"
+            component={RouterLink}
+            to="/gems/stakeholders"
+            sx={{ fontWeight: 700, borderRadius: 2 }}
+          >
+            Back to Stakeholder Registry
+          </Button>
+        </Paper>
+      </Box>
+    );
   }
 
   const formatDate = (dateStr?: string | null) => {

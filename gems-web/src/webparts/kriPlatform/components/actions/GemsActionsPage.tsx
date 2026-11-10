@@ -22,6 +22,7 @@ interface Props { context: KriContext; }
 const PRIORITY_COLORS: Record<string, string> = { High: '#F44336', Medium: '#FF9800', Low: '#477BFF' };
 const STATUS_COLORS: Record<string, string> = { Open: '#477BFF', InProgress: '#FF9800', Completed: '#00BFA5', Cancelled: '#7B8FA6', Deferred: '#FF7043' };
 const ACTION_TYPES = ['FollowUp', 'Task', 'Reminder', 'Approval', 'Review', 'Notification'];
+const BUSINESS_ENTITIES = ['INTERKONSTRUCT', 'KCC', 'PMT7', 'NGNEERED PROJECTS'];
 const PRIORITIES = ['High', 'Medium', 'Low'];
 
 function formatDate(dateStr: string): string {
@@ -279,6 +280,7 @@ function CreateActionDialog({ open, onClose, context, onCreated }: {
             onChange={(e) => setForm((f) => ({ ...f, agency: e.target.value }))}
           >
             <MenuItem value="">General / System</MenuItem>
+            {BUSINESS_ENTITIES.map((e) => (<MenuItem key={e} value={e}>{e}</MenuItem>))}
             {GEMS_ALLOWED_AGENCIES.map((a) => (<MenuItem key={a} value={a}>{a}</MenuItem>))}
           </TextField>
           <TextField select size="small" label="Action Type" value={form.actionType} onChange={(e) => setForm((f) => ({ ...f, actionType: e.target.value }))} required>

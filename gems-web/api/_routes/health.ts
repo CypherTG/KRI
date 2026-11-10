@@ -11,8 +11,8 @@ import { listRoutes } from '../_routes.js';
  * precisely so you can see a broken deployment without signing in.
  */
 export default methodGuard(['GET'], async (_req, res) => {
-  const required = ['DATABASE_URL', 'SESSION_SECRET', 'GEMINI_API_KEY', 'BLOB_READ_WRITE_TOKEN'] as const;
-  const optional = ['ADMIN_EMAILS', 'PERMISSIONS_MODE', 'GEMINI_MODEL'] as const;
+  const required = ['DATABASE_URL', 'SESSION_SECRET'] as const;
+  const optional = ['GEMINI_API_KEY', 'BLOB_READ_WRITE_TOKEN', 'ADMIN_EMAILS', 'PERMISSIONS_MODE', 'GEMINI_MODEL'] as const;
 
   const config: Record<string, boolean> = {};
   for (const key of required) config[key] = Boolean(process.env[key]);

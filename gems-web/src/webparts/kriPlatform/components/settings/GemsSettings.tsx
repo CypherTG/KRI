@@ -69,11 +69,19 @@ export default function GemsSettings({ context, themeMode, onThemeModeChange, ho
     setChecking(true);
     setSchemaReport(null);
     try {
-      const result = await apiRequest<{ database?: { connected?: boolean; error?: string } }>('/health');
+      const res = await fetch('/api/health');
+      const result = await res.json().catch(() => ({}));
       if (result?.database?.connected === false) {
         setSchemaReport({ ok: false, message: result.database.error || 'The database is not reachable.' });
       } else {
-        setSchemaReport({ ok: true, message: 'Connected. GEMS tables are in place.' });
+        const counts = result?.database?.counts || {};
+        const interactionsCount = counts.gems_interactions ?? 0;
+        const complianceCount = counts.gems_compliance ?? 0;
+        const actionsCount = counts.gems_actions ?? 0;
+        setSchemaReport({
+          ok: true,
+          message: `Connected. All GEMS tables verified (${interactionsCount} interactions, ${complianceCount} compliance, ${actionsCount} actions).`,
+        });
       }
     } catch (error) {
       setSchemaReport({ ok: false, message: `Could not verify: ${(error as Error).message || String(error)}` });

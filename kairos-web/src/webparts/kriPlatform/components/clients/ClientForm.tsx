@@ -42,7 +42,7 @@ const STAGE_OPTIONS = ['Knowledge', 'Rapport', 'Intimacy'];
 // The four companies of the group, as recorded against each contact. Distinct
 // from a person's family in `services/families`, which is derived from the
 // email domain. "KCC" is the historical short name for Konstructum.
-const BUSINESS_ARM_OPTIONS = ['INTERKONSTRUCT', 'KCC', 'PMT7', 'NGneered Projects']
+const BUSINESS_ARM_OPTIONS = ['INTERKONSTRUCT', 'KCC', 'PMT7', 'NGNEERED PROJECTS']
   .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
 function parsePhone(value?: string | null) {

@@ -54,8 +54,8 @@ function dayStatus(days: number | null): string {
 }
 
 function clientPath(clientId?: string, companyName?: string): string | undefined {
-  if (clientId) return `/clients/${clientId}`;
-  if (companyName) return `/companies/${encodeURIComponent(normalizeLookupKey(companyName))}`;
+  if (clientId) return `/gems/stakeholders/${clientId}`;
+  if (companyName) return `/gems/agencies/${encodeURIComponent(normalizeLookupKey(companyName))}`;
   return undefined;
 }
 

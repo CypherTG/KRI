@@ -3,7 +3,7 @@ import {
   Box, Typography, Paper, Stack, Chip, Button, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, TableSortLabel, TextField, MenuItem,
   CircularProgress, IconButton, Tooltip, Dialog, DialogTitle, DialogContent,
-  DialogActions, Link,
+  DialogActions, Link, Autocomplete,
 } from '@mui/material';
 import { KriContext } from '../../../../types/kri';
 import AddIcon from '@mui/icons-material/Add';
@@ -24,6 +24,7 @@ interface Props { context: KriContext; }
 const STATUS_COLORS: Record<string, string> = { Active: '#00BFA5', Expired: '#F44336', Pending: '#FF9800', Cancelled: '#7B8FA6', ExpiringSoon: '#FF7043', UnderReview: '#477BFF' };
 const COMPLIANCE_TYPES = ['Permit', 'License', 'Obligation', 'Certificate', 'Filing', 'Registration'];
 const STATUSES = ['Active', 'Expired', 'Pending', 'Cancelled', 'ExpiringSoon', 'UnderReview'];
+const ENTITY_OPTIONS = ['INTERKONSTRUCT', 'KCC', 'PMT7', 'NGNEERED PROJECTS', ...GEMS_ALLOWED_AGENCIES];
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '-';
@@ -246,7 +247,16 @@ function CreateComplianceDialog({ open, onClose, context, onCreated }: {
             {GEMS_ALLOWED_AGENCIES.map((a) => (<MenuItem key={a} value={a}>{a}</MenuItem>))}
           </TextField>
           <TextField size="small" label="Reference Number" value={form.referenceNumber} onChange={(e) => setForm((f) => ({ ...f, referenceNumber: e.target.value }))} placeholder="Permit/licence reference" />
-          <TextField size="small" label="Entity Name" value={form.entityName} onChange={(e) => setForm((f) => ({ ...f, entityName: e.target.value }))} placeholder="Company or agency name" />
+          <Autocomplete
+            freeSolo
+            options={ENTITY_OPTIONS}
+            value={form.entityName}
+            onChange={(_, v) => setForm((f) => ({ ...f, entityName: typeof v === 'string' ? v : v || '' }))}
+            onInputChange={(_, v) => setForm((f) => ({ ...f, entityName: v }))}
+            renderInput={(params) => (
+              <TextField {...params} size="small" label="Entity Name" placeholder="Select or type entity / agency name" />
+            )}
+          />
           <TextField size="small" label="Assigned To" value={form.assignedTo} onChange={(e) => setForm((f) => ({ ...f, assignedTo: e.target.value }))} />
           <TextField size="small" multiline rows={2} label="Description" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
           <Box>

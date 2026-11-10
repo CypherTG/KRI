@@ -57,7 +57,7 @@ const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', '
 const MONTHS_SINGLE = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 // Business arms are a per-contact attribute, distinct from a person's family —
 // the same four companies, but recorded against each contact as TEXT[].
-const BUSINESS_ARMS = ['All', 'KCC', 'PMT7', 'INTERKONSTRUCT', 'NGneered Projects'];
+const BUSINESS_ARMS = ['All', 'KCC', 'PMT7', 'INTERKONSTRUCT', 'NGNEERED PROJECTS'];
 const STAGE_COLORS: Record<string, string> = {
   Knowledge: '#477BFF',
   Rapport: '#FF7043',

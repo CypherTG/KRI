@@ -42,7 +42,7 @@ import OperationalQueue from '../shared/OperationalQueue';
 import { buildAutomationOperationalItems, OperationalItem } from '../../utils/operations';
 
 type Category = keyof typeof GEMS_CATEGORY_POINTS;
-type BusinessArm = 'INTERKONSTRUCT' | 'KCC' | 'PMT7';
+type BusinessArm = 'INTERKONSTRUCT' | 'KCC' | 'PMT7' | 'NGNEERED PROJECTS';
 
 const CATEGORY_COPY: Array<{ value: Category; label: string; role: string; influence: number; headline: string; description: string }> = [
   { value: 'Crown Jewel', label: 'Crown Jewel', role: 'Approver', influence: 90, headline: 'Final Authority / High Influence', description: 'Final decision-makers responsible for approvals, permits, and authorizations. They hold the ultimate authority to approve or reject proposals and initiatives.' },
@@ -52,7 +52,7 @@ const CATEGORY_COPY: Array<{ value: Category; label: string; role: string; influ
 ];
 
 const INTERACTION_TYPES = ['Meeting', 'Call', 'Email', 'Note'] as const;
-const BUSINESS_ARMS: BusinessArm[] = ['INTERKONSTRUCT', 'KCC', 'PMT7'];
+const BUSINESS_ARMS: BusinessArm[] = ['INTERKONSTRUCT', 'KCC', 'PMT7', 'NGNEERED PROJECTS'];
 const AGENCIES = GEMS_AGENCY_OPTIONS;
 const REVIEW_STATUSES = ['Submitted', 'Pending Review', 'Validated', 'Rejected'];
 const MONTHLY_TARGET = 100;
@@ -78,6 +78,13 @@ const AGENCY_TARGETS: Record<BusinessArm, Array<{ agency: string; target: number
     { agency: 'NCDMB', target: 20 },
     { agency: 'NEPL/NNPC', target: 15 },
     { agency: 'ENSERV', target: 15 },
+  ],
+  'NGNEERED PROJECTS': [
+    { agency: 'NUPRC', target: 20 },
+    { agency: 'NUIMS', target: 30 },
+    { agency: 'NCDMB', target: 20 },
+    { agency: 'NEPL/NNPC', target: 15 },
+    { agency: 'NMDPRA', target: 15 },
   ],
 };
 
@@ -369,7 +376,8 @@ export default function GemsInteractionWorkspace({
         };
       });
 
-    const autoItems = buildAutomationOperationalItems(automations, clients)
+    const autoItems = buildAutomationOperationalItems(automations, scopedClients)
+      .filter((item) => !item.clientId || scopedClients.some((sc) => String(sc.ID) === item.clientId))
       .filter((item) => item.priority === 'high' || item.priority === 'medium');
 
     return [...interactionItems, ...autoItems]
@@ -506,7 +514,7 @@ export default function GemsInteractionWorkspace({
         </Stack>
       </Paper>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'repeat(3, minmax(0, 1fr))' }, gap: 2 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(4, minmax(0, 1fr))' }, gap: 2 }}>
         {entityDashboards.map((dashboard) => (
           <Paper key={dashboard.arm} sx={{ p: 2.5, borderRadius: 3, border: '1px solid #E8ECF0' }}>
             <Stack spacing={1.5}>

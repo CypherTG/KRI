@@ -26,6 +26,7 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { downloadCsv, escapeCsv } from '../../utils/exportCsv';
 import { KriContext } from '../../../../types/kri';
 import { getClients } from '../../services/graphApi';
+import { loadGemsStakeholders } from '../../services/gemsApi';
 import { filterGemsEligibleClients } from '../../utils/gemsScope';
 import { normalizeLookupText } from '../../utils/lookupHelpers';
 import KriStageBadge from '../shared/KriStageBadge';
@@ -55,7 +56,8 @@ export default function GemsStakeholderList({ context }: Props) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    getClients(context)
+    loadGemsStakeholders(context)
+      .catch(() => getClients(context).then(filterGemsEligibleClients))
       .then((data) => {
         if (!cancelled) setClients(data);
       })

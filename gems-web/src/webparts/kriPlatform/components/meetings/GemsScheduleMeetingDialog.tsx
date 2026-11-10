@@ -20,8 +20,8 @@ interface Props {
   fixedClient?: IClient | null;
 }
 
-type BusinessArm = 'INTERKONSTRUCT' | 'KCC' | 'PMT7';
-const BUSINESS_ARMS: BusinessArm[] = ['INTERKONSTRUCT', 'KCC', 'PMT7'];
+type BusinessArm = 'INTERKONSTRUCT' | 'KCC' | 'PMT7' | 'NGNEERED PROJECTS';
+const BUSINESS_ARMS: BusinessArm[] = ['INTERKONSTRUCT', 'KCC', 'PMT7', 'NGNEERED PROJECTS'];
 
 function clientLabel(client: Partial<IClient> | null | undefined): string {
   if (!client) return '';
