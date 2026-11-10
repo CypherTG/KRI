@@ -19,7 +19,8 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { KriContext } from '../../../../types/kri';
+import { AutoAwesome as AutoAwesomeIcon } from '@mui/icons-material';
+import { KriContext, apiRequest } from '../../../../types/kri';
 import { useNavigate } from 'react-router-dom';
 import { createClient, getClients, getCurrentSiteUser, getKRIUsers, IClient, IKRIUser, isManagementAdminUser } from '../../services/graphApi';
 import { useStore } from '../../store/useStore';
@@ -337,6 +338,13 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupRegistry, setLookupRegistry] = useState<{
+    companies: string[];
+    projects: string[];
+    jobTitles: string[];
+  }>({ companies: [], projects: [], jobTitles: [] });
+  const [aiStandardizing, setAiStandardizing] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<{ name: string; industry?: string; website?: string } | null>(null);
   const [lookupMessage, setLookupMessage] = useState('');
   const [siteUser, setSiteUser] = useState<any>(null);
   const [accessRequests, setAccessRequests] = useState<KairosContactAccessRequest[]>([]);
@@ -429,9 +437,9 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
     };
   }, [context]);
 
-  const companyOptions = useMemo(() => dedupeSortedLookupValues(clients.map((client) => client.CompanyName)), [clients]);
-  const jobTitleOptions = useMemo(() => dedupeSortedLookupValues(clients.map((client) => client.JobTitle)), [clients]);
-  const projectOptions = useMemo(() => dedupeSortedLookupValues(clients.map((client) => client.ProjectName)), [clients]);
+  const companyOptions = useMemo(() => dedupeSortedLookupValues([...lookupRegistry.companies, ...clients.map((client) => client.CompanyName)]), [lookupRegistry.companies, clients]);
+  const jobTitleOptions = useMemo(() => dedupeSortedLookupValues([...lookupRegistry.jobTitles, ...clients.map((client) => client.JobTitle)]), [lookupRegistry.jobTitles, clients]);
+  const projectOptions = useMemo(() => dedupeSortedLookupValues([...lookupRegistry.projects, ...clients.map((client) => client.ProjectName)]), [lookupRegistry.projects, clients]);
   const assignableUsers = useMemo(() => sortUsersByDisplayName(users), [users]);
   const businessArms = useMemo(() => BUSINESS_ARM_OPTIONS.slice(), []);
   const approvedClientIds = useMemo(() => approvedClientIdsForRequestUser(accessRequests, siteUser || context.pageContext.user), [accessRequests, context.pageContext.user, siteUser]);
