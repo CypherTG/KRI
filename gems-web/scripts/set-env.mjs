@@ -13,6 +13,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 const CRED_DIRS = [
+  path.join(process.env.APPDATA || '', 'com.vercel.cli', 'Data'),
   path.join(process.env.APPDATA || '', 'xdg.data', 'com.vercel.cli'),
   path.join(os.homedir(), '.local', 'share', 'com.vercel.cli'),
   path.join(os.homedir(), '.vercel'),
