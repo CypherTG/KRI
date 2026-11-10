@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Autocomplete,
   Box,
   Typography,
   Paper,
@@ -23,15 +24,16 @@ import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
 import GridViewIcon from '@mui/icons-material/GridView';
 import TableRowsIcon from '@mui/icons-material/TableRows';
-import { KriContext } from '../../../../types/kri';
+import { AutoAwesome as AutoAwesomeIcon } from '@mui/icons-material';
+import { KriContext, apiRequest } from '../../../../types/kri';
 import { getClients, getCurrentSiteUser, isManagementAdminUser } from '../../services/graphApi';
 import { useStore } from '../../store/useStore';
 import KriStageBadge from '../shared/KriStageBadge';
 import ClientCard from './ClientCard';
 import { TableSkeleton, CardSkeleton } from '../shared/LoadingState';
 import EmptyState from '../shared/EmptyState';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { buildCompanySummaries, normalizeLookupText } from '../../utils/lookupHelpers';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { buildCompanySummaries, normalizeLookupText, dedupeSortedLookupValues, CompanySummary } from '../../utils/lookupHelpers';
 import { approvedClientIdsForRequestUser, canViewClient, getClientCreatorLabel, isClientOwnedByPrincipal } from '../../utils/kairosPermissions';
 import { getContactAccessRequestsForUser, KairosContactAccessRequest, upsertCompanyRegistryRecord } from '../../services/sharepointProvisioning';
 import ClientForm from './ClientForm';
@@ -64,6 +66,11 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
   const [companyPickerValue, setCompanyPickerValue] = useState('');
   const [companyPickerStep, setCompanyPickerStep] = useState<'company' | 'contact'>('company');
   const [companyPickerSession, setCompanyPickerSession] = useState(0);
+  const location = useLocation();
+  const [companyPickerInputValue, setCompanyPickerInputValue] = useState('');
+  const [dbCompanies, setDbCompanies] = useState<string[]>([]);
+  const [aiStandardizing, setAiStandardizing] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<{ name: string; industry?: string; website?: string } | null>(null);
   const [clientsLoading, setClientsLoading] = useState(true);
   const [siteUser, setSiteUser] = useState<any>(null);
   const [accessRequests, setAccessRequests] = useState<KairosContactAccessRequest[]>([]);
@@ -72,6 +79,28 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
       setMode('companies');
     }
   }, [pageVariant]);
+
+  useEffect(() => {
+    if (pageVariant === 'add-contact' || (location.state as any)?.openCompanyPicker) {
+      setCompanyPickerSession((current) => current + 1);
+      setCompanyPickerValue('');
+      setCompanyPickerInputValue('');
+      setCompanyPickerStep('company');
+      setCompanyPickerOpen(true);
+    }
+  }, [pageVariant, location.state]);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<{ companies: string[] }>('/lookups')
+      .then((res) => {
+        if (!cancelled && res?.companies && Array.isArray(res.companies)) {
+          setDbCompanies(res.companies);
+        }
+      })
+      .catch((err) => console.warn('[ClientList] Failed to load lookup companies', err));
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -151,7 +180,34 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
     });
   }, [filteredClients, sortBy]);
 
-  const companySummaries = useMemo(() => buildCompanySummaries(filteredClients), [filteredClients]);
+  const allCompanyOptions = useMemo(() => {
+    const fromClients = clients.map((c) => c.CompanyName).filter(Boolean);
+    return dedupeSortedLookupValues([...dbCompanies, ...fromClients]);
+  }, [dbCompanies, clients]);
+
+  const companySummaries = useMemo(() => {
+    const fromClients = buildCompanySummaries(filteredClients);
+    const existingKeys = new Set(fromClients.map((c) => c.key));
+    if (!search && stageFilter === 'All' && ownerFilter === 'All') {
+      const extra: CompanySummary[] = [];
+      for (const compName of dbCompanies) {
+        const key = compName.trim().toLowerCase();
+        if (!existingKeys.has(key)) {
+          extra.push({
+            key,
+            name: compName,
+            clients: [],
+            totalContacts: 0,
+            knowledge: 0,
+            rapport: 0,
+            intimacy: 0,
+          });
+        }
+      }
+      return [...fromClients, ...extra].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    }
+    return fromClients;
+  }, [filteredClients, dbCompanies, search, stageFilter, ownerFilter]);
   const visibleClients = sortedClients;
   const visibleCompanies = companySummaries;
   const totalCount = mode === 'companies' ? visibleCompanies.length : visibleClients.length;
@@ -159,14 +215,44 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
   const openCompanyPicker = () => {
     setCompanyPickerSession((current) => current + 1);
     setCompanyPickerValue('');
+    setCompanyPickerInputValue('');
     setCompanyPickerStep('company');
+    setAiSuggestion(null);
     setCompanyPickerOpen(true);
   };
 
   const closeCompanyPicker = () => {
     setCompanyPickerOpen(false);
     setCompanyPickerStep('company');
+    setAiSuggestion(null);
     onNewClientFormClose?.();
+    if (pageVariant === 'add-contact') {
+      navigate('/clients');
+    }
+  };
+
+  const handleAiStandardizeCompanyPicker = async () => {
+    const q = normalizeLookupText(companyPickerValue);
+    if (!q || q.length < 2) return;
+    setAiStandardizing(true);
+    setAiSuggestion(null);
+    try {
+      const res = await apiRequest<{
+        matches?: string[];
+        aiSuggestion?: { name: string; industry?: string; website?: string } | null;
+      }>('/companies', {
+        query: { q, ai: 'true' },
+      });
+      if (res?.aiSuggestion && res.aiSuggestion.name) {
+        setAiSuggestion(res.aiSuggestion);
+      } else if (res?.matches && res.matches.length > 0) {
+        setAiSuggestion({ name: res.matches[0] });
+      }
+    } catch (err) {
+      console.warn('[ClientList] AI standardize failed', err);
+    } finally {
+      setAiStandardizing(false);
+    }
   };
 
   const confirmCompanySelection = () => {
@@ -542,31 +628,120 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
                 </Box>
                 <Box sx={{ p: 3, overflowY: 'auto' }}>
                   <Stack spacing={2}>
-                    <TextField
-                      label="Company"
-                      size="small"
-                      fullWidth
-                      autoFocus
-                      placeholder="Search or type a company name"
-                      value={companyPickerValue}
-                      onChange={(event) => setCompanyPickerValue(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault();
-                          confirmCompanySelection();
+                    <Autocomplete
+                      disablePortal
+                      freeSolo
+                      options={allCompanyOptions}
+                      value={companyPickerValue || null}
+                      inputValue={companyPickerInputValue}
+                      onInputChange={(_, newInputValue, reason) => {
+                        if (reason === 'input' || reason === 'clear' || reason === 'reset') {
+                          setCompanyPickerInputValue(newInputValue);
+                          setCompanyPickerValue(newInputValue);
+                          setAiSuggestion(null);
                         }
                       }}
+                      onChange={(_, newValue) => {
+                        const val = typeof newValue === 'string' ? newValue : newValue || '';
+                        setCompanyPickerValue(val);
+                        setCompanyPickerInputValue(val);
+                        setAiSuggestion(null);
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Company / Organisation"
+                          size="small"
+                          fullWidth
+                          autoFocus
+                          placeholder="Type to search 250+ companies/agencies or enter a new one"
+                          helperText="Select from registered corporate entities/agencies or enter a new one."
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' && companyPickerValue) {
+                              event.preventDefault();
+                              confirmCompanySelection();
+                            }
+                          }}
+                        />
+                      )}
                     />
-                    {companySummaries.length > 0 && (
-                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                        {companySummaries.slice(0, 6).map((company) => (
+
+                    {companyPickerValue && companyPickerValue.trim().length >= 2 && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                        {!allCompanyOptions.some((c) => c.toLowerCase() === companyPickerValue.trim().toLowerCase()) && (
                           <Chip
-                            key={company.key}
-                            label={company.name}
-                            onClick={() => setCompanyPickerValue(company.name)}
-                            sx={{ fontWeight: 700 }}
+                            icon={<AutoAwesomeIcon sx={{ fontSize: '0.95rem !important' }} />}
+                            label={aiStandardizing ? 'Standardizing with AI...' : `✨ AI Standardize "${companyPickerValue.trim()}"`}
+                            size="small"
+                            onClick={() => { void handleAiStandardizeCompanyPicker(); }}
+                            disabled={aiStandardizing}
+                            color="primary"
+                            variant="outlined"
+                            sx={{ cursor: 'pointer', fontWeight: 600, fontSize: '0.74rem', height: 26 }}
                           />
-                        ))}
+                        )}
+                        {aiSuggestion && (
+                          <Box
+                            sx={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 1,
+                              bgcolor: '#F0FDF4',
+                              border: '1px solid #BBF7D0',
+                              px: 1.25,
+                              py: 0.4,
+                              borderRadius: 1.5,
+                            }}
+                          >
+                            <Typography sx={{ fontSize: '0.76rem', color: '#166534' }}>
+                              Suggested: <strong>{aiSuggestion.name}</strong>
+                              {aiSuggestion.industry ? ` · ${aiSuggestion.industry}` : ''}
+                            </Typography>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              color="success"
+                              sx={{
+                                minWidth: 0,
+                                px: 1,
+                                py: 0.2,
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                textTransform: 'none',
+                                boxShadow: 'none',
+                              }}
+                              onClick={() => {
+                                setCompanyPickerValue(aiSuggestion.name);
+                                setCompanyPickerInputValue(aiSuggestion.name);
+                                setAiSuggestion(null);
+                              }}
+                            >
+                              Apply
+                            </Button>
+                          </Box>
+                        )}
+                      </Box>
+                    )}
+
+                    {allCompanyOptions.length > 0 && !companyPickerValue && (
+                      <Box sx={{ mt: 1 }}>
+                        <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: '#7B8FA6', mb: 1 }}>
+                          Quick Suggestions from Registry:
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap' }}>
+                          {allCompanyOptions.slice(0, 8).map((name) => (
+                            <Chip
+                              key={name}
+                              label={name}
+                              size="small"
+                              onClick={() => {
+                                setCompanyPickerValue(name);
+                                setCompanyPickerInputValue(name);
+                              }}
+                              sx={{ fontWeight: 600, cursor: 'pointer', fontSize: '0.75rem' }}
+                            />
+                          ))}
+                        </Box>
                       </Box>
                     )}
                   </Stack>
