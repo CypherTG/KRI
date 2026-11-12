@@ -14,6 +14,7 @@ import {
   MenuItem,
   Stack,
   Step,
+  StepButton,
   StepLabel,
   Stepper,
   TextField,
@@ -484,9 +485,9 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
         CompanyName: normalizeLookupText(formData.CompanyName),
         JobTitle: normalizeLookupText(formData.JobTitle),
         ProjectName: normalizeLookupText(formData.ProjectName),
-        BusinessArm: (formData.BusinessArm || []).length
-          ? (formData.BusinessArm || []).map((entry) => normalizeLookupText(entry)).filter(Boolean)
-          : undefined,
+        BusinessArm: Array.isArray(formData.BusinessArm)
+          ? formData.BusinessArm.map((entry) => normalizeLookupText(entry)).filter(Boolean)
+          : (formData.BusinessArm ? [normalizeLookupText(String(formData.BusinessArm))].filter(Boolean) : undefined),
         NeedsOpportunity: canManageAssignments ? normalizeLookupText(formData.NeedsOpportunity) : undefined,
         KCCContactPerson: formData.KCCContactPerson || undefined,
         KRISecondaryContact: formData.KRISecondaryContact || undefined,
@@ -538,10 +539,26 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
       <DialogContent dividers sx={{ pb: 1, flex: 1, overflowY: 'auto' }}>
         <Stack spacing={2.5}>
           <Box>
-            <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 2 }}>
-              {STEPS.map((label) => (
+            <Stepper activeStep={activeStep} alternativeLabel nonLinear sx={{ mb: 2 }}>
+              {STEPS.map((label, index) => (
                 <Step key={label}>
-                  <StepLabel>{label}</StepLabel>
+                  <StepButton
+                    onClick={() => setActiveStep(index)}
+                    sx={{
+                      cursor: 'pointer',
+                      borderRadius: 1,
+                      p: 0.5,
+                      '& .MuiStepLabel-label': {
+                        cursor: 'pointer',
+                        fontWeight: activeStep === index ? 700 : 500,
+                      },
+                      '&:hover': {
+                        bgcolor: 'action.hover',
+                      },
+                    }}
+                  >
+                    {label}
+                  </StepButton>
                 </Step>
               ))}
             </Stepper>
@@ -581,8 +598,7 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
             </Alert>
           )}
 
-          {activeStep === 0 && (
-            <Box sx={fieldGrid}>
+          <Box sx={{ ...fieldGrid, display: activeStep === 0 ? 'grid' : 'none' }}>
               <TextField
                 label="First Name"
                 size="small"
@@ -630,10 +646,8 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
                 onChange={(event) => setField('BirthdayDate', event.target.value)}
               />
             </Box>
-          )}
 
-          {activeStep === 1 && (
-            <Box sx={fieldGrid}>
+          <Box sx={{ ...fieldGrid, display: activeStep === 1 ? 'grid' : 'none' }}>
               <LookupField
                 label="Company / Organisation"
                 value={normalizeLookupText(formData.CompanyName)}
@@ -687,10 +701,8 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
                 />
               )}
             </Box>
-          )}
 
-          {activeStep === 2 && (
-            <Box sx={fieldGrid}>
+          <Box sx={{ ...fieldGrid, display: activeStep === 2 ? 'grid' : 'none' }}>
               <TextField
                 label="Email"
                 size="small"
@@ -719,10 +731,8 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
                 onChange={(event) => setField('InstagramHandle', event.target.value)}
               />
             </Box>
-          )}
 
-          {activeStep === 3 && (
-            <Box sx={{ display: 'grid', gap: 2 }}>
+          <Box sx={{ display: activeStep === 3 ? 'grid' : 'none', gap: 2 }}>
               <TextField
                 select
                 label="KRI Stage"
@@ -785,7 +795,6 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
                 </Typography>
               </Box>
             </Box>
-          )}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2, flexShrink: 0, borderTop: '1px solid #E8ECF0', background: '#FFFFFF' }}>

@@ -671,7 +671,7 @@ export default function ClientList({ context, showNewClientForm, onNewClientForm
                         {!allCompanyOptions.some((c) => c.toLowerCase() === companyPickerValue.trim().toLowerCase()) && (
                           <Chip
                             icon={<AutoAwesomeIcon sx={{ fontSize: '0.95rem !important' }} />}
-                            label={aiStandardizing ? 'Standardizing with AI...' : `✨ AI Standardize "${companyPickerValue.trim()}"`}
+                            label={aiStandardizing ? 'Standardizing with AI...' : `AI Standardize "${companyPickerValue.trim()}"`}
                             size="small"
                             onClick={() => { void handleAiStandardizeCompanyPicker(); }}
                             disabled={aiStandardizing}

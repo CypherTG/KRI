@@ -23,6 +23,8 @@ import {
 import { getEditableEngagements } from '../../services/kairosScopedData';
 import { useStore } from '../../store/useStore';
 import AddIcon from '@mui/icons-material/Add';
+import CheckIcon from '@mui/icons-material/Check';
+import CloseIcon from '@mui/icons-material/Close';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import EngagementForm from './EngagementForm';
@@ -171,7 +173,7 @@ function EngagementCard({
             <>
               <Chip
                 onClick={() => onStageChange(eng.ID, 'Won')}
-                label="✓ Won"
+                icon={<CheckIcon sx={{ fontSize: "12px !important" }} />} label="Won"
                 size="small"
                 sx={{
                   cursor: 'pointer',
@@ -185,7 +187,7 @@ function EngagementCard({
               />
               <Chip
                 onClick={() => onStageChange(eng.ID, 'Lost')}
-                label="✕ Lost"
+                icon={<CloseIcon sx={{ fontSize: "12px !important" }} />} label="Lost"
                 size="small"
                 sx={{
                   cursor: 'pointer',
