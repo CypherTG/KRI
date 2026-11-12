@@ -125,11 +125,40 @@ export default function CompanyDetail({ context, showNewClientForm, onNewClientF
   const latestAcumen = companyAcumenRecords[0] || null;
   // Documents live in Vercel Blob; the row stores the resolved public URL, so
   // there is no SharePoint path convention to reconstruct at read time.
+  const rawAcumenUrl = String(latestAcumen?.FileUrl || '').trim();
+  // When Blob storage is not configured the server keeps the file inline as a
+  // `data:` URL. Browsers refuse to navigate to or embed large data URLs, so
+  // convert it into a same-origin object URL that View / Download / iframe accept.
+  const [acumenObjectUrl, setAcumenObjectUrl] = useState('');
+  useEffect(() => {
+    if (!rawAcumenUrl.startsWith('data:')) {
+      setAcumenObjectUrl('');
+      return undefined;
+    }
+    let objectUrl = '';
+    try {
+      const comma = rawAcumenUrl.indexOf(',');
+      const meta = rawAcumenUrl.slice(5, comma);
+      const mime = meta.split(';')[0] || 'application/octet-stream';
+      const binary = atob(rawAcumenUrl.slice(comma + 1));
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      objectUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
+      setAcumenObjectUrl(objectUrl);
+    } catch (error) {
+      console.warn('[CompanyDetail] Could not decode stored company document', error);
+      setAcumenObjectUrl('');
+    }
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [rawAcumenUrl]);
+
   const latestAcumenUrl = useMemo(() => {
-    const url = String(latestAcumen?.FileUrl || '').trim();
-    if (!url) return '';
-    return /^https?:\/\//i.test(url) ? url : `${context.pageContext.web.absoluteUrl}${url.startsWith('/') ? '' : '/'}${url}`;
-  }, [context.pageContext.web.absoluteUrl, latestAcumen]);
+    if (!rawAcumenUrl) return '';
+    if (rawAcumenUrl.startsWith('data:')) return acumenObjectUrl;
+    return /^https?:\/\//i.test(rawAcumenUrl) ? rawAcumenUrl : `${context.pageContext.web.absoluteUrl}${rawAcumenUrl.startsWith('/') ? '' : '/'}${rawAcumenUrl}`;
+  }, [context.pageContext.web.absoluteUrl, rawAcumenUrl, acumenObjectUrl]);
 
   const latestAcumenPreviewUrl = useMemo(() => {
     if (!latestAcumenUrl) return '';
@@ -145,7 +174,7 @@ export default function CompanyDetail({ context, showNewClientForm, onNewClientF
       setAcumenViewerOpen(true);
       return;
     }
-    window.location.href = latestAcumenUrl;
+    window.open(latestAcumenUrl, '_blank', 'noopener');
   };
 
   const refreshCompanyAcumen = async () => {
@@ -157,13 +186,25 @@ export default function CompanyDetail({ context, showNewClientForm, onNewClientF
     try {
       const records = await getCompanyAcumenRecords(context, company.key);
       setCompanyAcumenRecords(records);
+    } catch (error) {
+      console.warn('[CompanyDetail] Failed to load company acumen', error);
+      setAcumenError(`Could not load the company document: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setAcumenLoading(false);
     }
   };
 
+  // Vercel rejects request bodies over 4.5 MB, and base64 adds ~33%, so keep
+  // uploads under 3 MB until Blob storage takes the file out of the request.
+  const MAX_ACUMEN_BYTES = 3 * 1024 * 1024;
+
   const saveCompanyAcumen = async (file: File | null, inputEl?: HTMLInputElement | null) => {
     if (!file || !company) return;
+    if (file.size > MAX_ACUMEN_BYTES) {
+      setAcumenError(`"${file.name}" is ${(file.size / 1024 / 1024).toFixed(1)} MB. Please upload a file under 3 MB (compress the PDF or export at lower quality).`);
+      if (inputEl) inputEl.value = '';
+      return;
+    }
     setAcumenUploading(true);
     setAcumenError(null);
     try {
@@ -358,7 +399,7 @@ export default function CompanyDetail({ context, showNewClientForm, onNewClientF
               </Typography>
             )}
             <Typography sx={{ fontSize: '0.74rem', color: '#7B8FA6', mt: 1 }}>
-              Uploading a new file replaces the existing company document.
+              Uploading a new file replaces the existing company document. Max 3 MB.
             </Typography>
             {latestAcumen ? (
               <Box
@@ -423,7 +464,7 @@ export default function CompanyDetail({ context, showNewClientForm, onNewClientF
                     href={latestAcumenUrl}
                     target="_blank"
                     rel="noreferrer"
-                    download
+                    download={latestAcumen?.FileName || latestAcumen?.Title || 'company-document'}
                     variant="outlined"
                     sx={{ borderRadius: 2, fontWeight: 700 }}
                   >

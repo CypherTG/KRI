@@ -681,7 +681,7 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
                   label="Primary Owner"
                   value={String((formData.KCCContactPerson as any)?.ID || (formData.KCCContactPerson as any)?.Id || '')}
                   options={assignableUsers}
-                  helperText="Assignable to management users."
+                  helperText="Main relationship holder - accountable for this contact, sees it on their dashboard and can edit it."
                   onChange={(value) => {
                     const selected = assignableUsers.find((user) => String(user.ID) === String(value)) || null;
                     setField('KCCContactPerson', selected);
@@ -693,7 +693,7 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
                   label="Secondary Owner"
                   value={String((formData.KRISecondaryContact as any)?.ID || (formData.KRISecondaryContact as any)?.Id || '')}
                   options={assignableUsers}
-                  helperText="Optional second owner."
+                  helperText="Optional backup colleague - gets the same view and edit access, e.g. when the primary is away."
                   onChange={(value) => {
                     const selected = assignableUsers.find((user) => String(user.ID) === String(value)) || null;
                     setField('KRISecondaryContact', selected);

@@ -2,6 +2,7 @@
   "name": "kri-workspace",
   "private": true,
   "scripts": {
+    "build": "npm --prefix kairos-web run build",
     "serve:all": "powershell -ExecutionPolicy Bypass -File .\\scripts\\start-both-serves.ps1"
   },
   "dependencies": {
