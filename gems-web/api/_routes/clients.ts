@@ -53,7 +53,7 @@ export default methodGuard(['GET', 'POST'], async (req, res) => {
         date_registered, photo_url, industry, notes, needs_opportunity,
         is_active, created_by_id
      ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
+        $1,$2,$3,$4,$5,$6,$7::text[],$8,$9,$10,$11,$12,$13,$14,$15,
         CURRENT_DATE,$16,$17,$18,$19,TRUE,$20
      )
      RETURNING id`,
@@ -64,7 +64,7 @@ export default methodGuard(['GET', 'POST'], async (req, res) => {
       optionalString(body.email ?? body.Email, 300),
       optionalString(body.phone ?? body.Phone, 60),
       companyName,
-      toTextArray(body.businessArm ?? body.BusinessArm),
+      toTextArray(body.businessArm ?? body.BusinessArm ?? body.businessArms ?? body.business_arms),
       optionalString(body.jobTitle ?? body.JobTitle, 300),
       optionalString(body.projectName ?? body.ProjectName, 300),
       stage,

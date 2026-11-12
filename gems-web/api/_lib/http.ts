@@ -39,8 +39,12 @@ export function sendError(res: VercelResponse, error: unknown) {
   if (status >= 500) {
     console.error('[kairos-api]', error);
   }
+
   return sendJson(res, status, {
     error: message,
+    // Lets the sign-in form reveal its code field. Only ever set by
+    // TokenRequiredError, and it says nothing about whether the account exists.
+    ...(typeof (error as any)?.needsToken === 'boolean' ? { needsToken: (error as any).needsToken } : {}),
     ...(error instanceof HttpError && error.details ? { details: error.details } : {}),
   });
 }
@@ -85,13 +89,20 @@ export function toTextArray(value: unknown): string[] {
   }
   const text = String(value).trim();
   if (!text) return [];
-  if (text.startsWith('[')) {
+  if (text.startsWith('[') && text.endsWith(']')) {
     try {
       const parsed = JSON.parse(text);
       if (Array.isArray(parsed)) return parsed.map((entry) => String(entry).trim()).filter(Boolean);
     } catch {
       /* fall through to comma split */
     }
+  }
+  // Handle PostgreSQL array literals like {item1,item2} or {"NGNEERED PROJECTS"}
+  if (text.startsWith('{') && text.endsWith('}')) {
+    const inner = text.slice(1, -1).trim();
+    if (!inner) return [];
+    const tokens = inner.match(/("(?:\\.|[^"\\])*"|[^,]+)/g) || [];
+    return tokens.map((token) => token.replace(/^"|"$/g, '').trim()).filter(Boolean);
   }
   return text
     .split(/[\n,]/)

@@ -91,8 +91,8 @@ export default methodGuard(['GET', 'PATCH', 'DELETE'], async (req, res) => {
   if (was(email)) setText('email', email, 300);
   const phone = pick('phone', 'Phone');
   if (was(phone)) setText('phone', phone, 60);
-  const arms = pick('businessArm', 'BusinessArm', 'businessArms');
-  if (was(arms)) assignments.push(`business_arms = ${bind(toTextArray(arms))}`);
+  const arms = pick('businessArm', 'BusinessArm', 'businessArms', 'business_arms');
+  if (was(arms)) assignments.push(`business_arms = ${bind(toTextArray(arms))}::text[]`);
   const jobTitle = pick('jobTitle', 'JobTitle');
   if (was(jobTitle)) setText('job_title', jobTitle, 300);
   const projectName = pick('projectName', 'ProjectName');

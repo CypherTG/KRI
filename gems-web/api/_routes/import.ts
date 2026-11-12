@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { requireSession } from '../_lib/auth.js';
-import { methodGuard, readJson, sendJson, HttpError } from '../_lib/http.js';
+import { methodGuard, readJson, sendJson, toTextArray, HttpError } from '../_lib/http.js';
 import { raw, rawOne } from '../_lib/db.js';
 import { canSeeEverything } from '../_lib/scope.js';
 
@@ -185,8 +185,13 @@ export default methodGuard(['POST'], async (req, res) => {
             current === '' ||
             current === 'Required Info';
           if (value && empty) {
-            values.push(value);
-            assignments.push(`${field} = $${values.length}`);
+            if (field === 'business_arms') {
+              values.push(toTextArray(value));
+              assignments.push(`${field} = $${values.length}::text[]`);
+            } else {
+              values.push(value);
+              assignments.push(`${field} = $${values.length}`);
+            }
           }
         }
         if (assignments.length) {
@@ -202,7 +207,7 @@ export default methodGuard(['POST'], async (req, res) => {
           record.email ?? null,
           record.phone ?? null,
           record.company_name ?? null,
-          record.business_arms ?? [],
+          toTextArray(record.business_arms),
           record.job_title ?? null,
           record.project_name ?? null,
           record.kri_stage ?? 'Knowledge',
@@ -218,7 +223,7 @@ export default methodGuard(['POST'], async (req, res) => {
               first_name, last_name, gender, email, phone, company_name, business_arms,
               job_title, project_name, kri_stage, linkedin_url, instagram_handle,
               birthday_date, industry, notes, created_by_id
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7::text[],$8,$9,$10,$11,$12,$13,$14,$15,$16)
            RETURNING *`,
           values,
         );

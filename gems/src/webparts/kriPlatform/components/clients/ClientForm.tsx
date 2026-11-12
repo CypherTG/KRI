@@ -14,28 +14,38 @@ import {
   MenuItem,
   Stack,
   Step,
+  StepButton,
   StepLabel,
   Stepper,
   TextField,
   Typography,
 } from '@mui/material';
-import { WebPartContext } from '@microsoft/sp-webpart-base';
-import { createClient, getClients, getKRIUsers, IClient, IKRIUser, isManagementAdminUser } from '../../services/graphApi';
+import { AutoAwesome as AutoAwesomeIcon } from '@mui/icons-material';
+import { KriContext, apiRequest } from '../../../../types/kri';
+import { useNavigate } from 'react-router-dom';
+import { createClient, getClients, getCurrentSiteUser, getKRIUsers, IClient, IKRIUser, isManagementAdminUser } from '../../services/graphApi';
 import { useStore } from '../../store/useStore';
 import { dedupeSortedLookupValues, normalizeLookupText, sortUsersByDisplayName, userDisplayName } from '../../utils/lookupHelpers';
 import { PHONE_DIAL_CODES } from '../../constants/phoneDialCodes';
+import { approvedClientIdsForRequestUser, canViewClient } from '../../utils/kairosPermissions';
+import { ensureKairosClientManagementFields, getContactAccessRequestsForUser, KairosContactAccessRequest, requestContactAccess } from '../../services/sharepointProvisioning';
 
 interface Props {
-  context: WebPartContext;
+  context: KriContext;
   onClose: () => void;
   onSaved: (client: IClient) => void;
   initialValues?: Partial<IClient>;
+  inline?: boolean;
 }
 
 const STEPS = ['Identity', 'Relationship', 'Contact', 'Review'];
 const GENDER_OPTIONS = ['Female', 'Male', 'Other', 'Prefer not to say'];
 const STAGE_OPTIONS = ['Knowledge', 'Rapport', 'Intimacy'];
-const BUSINESS_ARM_OPTIONS = ['INTERKONSTRUCT', 'KCC', 'PMT7'].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+// The four companies of the group, as recorded against each contact. Distinct
+// from a person's family in `services/families`, which is derived from the
+// email domain. "KCC" is the historical short name for Konstructum.
+const BUSINESS_ARM_OPTIONS = ['INTERKONSTRUCT', 'KCC', 'PMT7', 'NGNEERED PROJECTS']
+  .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
 function parsePhone(value?: string | null) {
   const raw = normalizeLookupText(value);
@@ -57,6 +67,26 @@ function parsePhone(value?: string | null) {
     };
   }
   return { code: '+234', number: raw };
+}
+
+function normalizePhoneForMatch(value?: string | null): string {
+  return String(value || '').replace(/[^\d]/g, '');
+}
+
+function findDuplicateClient(candidates: IClient[], email?: string, phone?: string): IClient | null {
+  const normalizedEmail = normalizeLookupText(email).toLowerCase();
+  const normalizedPhone = normalizePhoneForMatch(phone);
+  const meaningfulPhone = normalizedPhone.length >= 7 ? normalizedPhone : '';
+  if (!normalizedEmail && !meaningfulPhone) return null;
+  return candidates.find((client) => {
+    const clientEmail = normalizeLookupText(client.Email).toLowerCase();
+    const clientPhone = normalizePhoneForMatch(client.Phone);
+    const meaningfulClientPhone = clientPhone.length >= 7 ? clientPhone : '';
+    return Boolean(
+      normalizedEmail && clientEmail && normalizedEmail === clientEmail
+      || meaningfulPhone && meaningfulClientPhone && meaningfulPhone === meaningfulClientPhone
+    );
+  }) || null;
 }
 
 function LookupField({
@@ -82,6 +112,7 @@ function LookupField({
 
   return (
     <Autocomplete
+      disablePortal
       freeSolo
       options={options}
       value={value || null}
@@ -137,6 +168,7 @@ function MultiLookupField({
 
   return (
     <Autocomplete
+      disablePortal
       multiple
       freeSolo
       options={options}
@@ -206,6 +238,7 @@ function UserLookupField({
 
   return (
     <Autocomplete
+      disablePortal
       options={options}
       value={selected}
       onChange={(_, newValue) => onChange(newValue ? String(newValue.ID) : '')}
@@ -241,6 +274,7 @@ function PhoneField({
     <Grid container spacing={1.5}>
       <Grid item xs={12} sm={4}>
         <Autocomplete
+          disablePortal
           freeSolo
           options={PHONE_DIAL_CODES}
           value={selectedCode}
@@ -291,7 +325,8 @@ function PhoneField({
   );
 }
 
-export default function ClientForm({ context, onClose, onSaved, initialValues }: Props) {
+export default function ClientForm({ context, onClose, onSaved, initialValues, inline = false }: Props) {
+  const navigate = useNavigate();
   const {
     clients,
     setClients,
@@ -299,11 +334,24 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
     setUsers,
     currentUserProfile,
   } = useStore();
-  const canManageAssignments = isManagementAdminUser(currentUserProfile);
+  const canManageAssignments = Boolean(context?.session?.isAdmin) || isManagementAdminUser(currentUserProfile);
   const [activeStep, setActiveStep] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupRegistry, setLookupRegistry] = useState<{
+    companies: string[];
+    projects: string[];
+    jobTitles: string[];
+  }>({ companies: [], projects: [], jobTitles: [] });
+  const [aiStandardizing, setAiStandardizing] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<{ name: string; industry?: string; website?: string } | null>(null);
   const [lookupMessage, setLookupMessage] = useState('');
+  const [siteUser, setSiteUser] = useState<any>(null);
+  const [accessRequests, setAccessRequests] = useState<KairosContactAccessRequest[]>([]);
+  const [duplicateClient, setDuplicateClient] = useState<IClient | null>(null);
+  const [duplicateMessage, setDuplicateMessage] = useState('');
+  const [requestingAccess, setRequestingAccess] = useState(false);
   const initialPhone = parsePhone(initialValues?.Phone);
   const [phoneCode, setPhoneCode] = useState(initialPhone.code);
   const [phoneNumber, setPhoneNumber] = useState(initialPhone.number);
@@ -326,10 +374,9 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
     KRISecondaryContact: initialValues?.KRISecondaryContact || null,
     BirthdayDate: normalizeLookupText(initialValues?.BirthdayDate),
     Notes: normalizeLookupText(initialValues?.Notes),
+    NeedsOpportunity: normalizeLookupText(initialValues?.NeedsOpportunity),
     KCCContactPerson: initialValues?.KCCContactPerson || null,
   }));
-
-  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -376,11 +423,27 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
     };
   }, [context, canManageAssignments, clients.length, users.length, setClients, setUsers]);
 
-  const companyOptions = useMemo(() => dedupeSortedLookupValues(clients.map((client) => client.CompanyName)), [clients]);
-  const jobTitleOptions = useMemo(() => dedupeSortedLookupValues(clients.map((client) => client.JobTitle)), [clients]);
-  const projectOptions = useMemo(() => dedupeSortedLookupValues(clients.map((client) => client.ProjectName)), [clients]);
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([
+      getCurrentSiteUser(context).catch(() => null),
+      getContactAccessRequestsForUser(context).catch(() => [] as KairosContactAccessRequest[]),
+    ]).then(([user, requests]) => {
+      if (cancelled) return;
+      setSiteUser(user);
+      setAccessRequests(requests || []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [context]);
+
+  const companyOptions = useMemo(() => dedupeSortedLookupValues([...lookupRegistry.companies, ...clients.map((client) => client.CompanyName)]), [lookupRegistry.companies, clients]);
+  const jobTitleOptions = useMemo(() => dedupeSortedLookupValues([...lookupRegistry.jobTitles, ...clients.map((client) => client.JobTitle)]), [lookupRegistry.jobTitles, clients]);
+  const projectOptions = useMemo(() => dedupeSortedLookupValues([...lookupRegistry.projects, ...clients.map((client) => client.ProjectName)]), [lookupRegistry.projects, clients]);
   const assignableUsers = useMemo(() => sortUsersByDisplayName(users), [users]);
   const businessArms = useMemo(() => BUSINESS_ARM_OPTIONS.slice(), []);
+  const approvedClientIds = useMemo(() => approvedClientIdsForRequestUser(accessRequests, siteUser || context.pageContext.user), [accessRequests, context.pageContext.user, siteUser]);
 
   const fieldGrid = {
     display: 'grid',
@@ -396,45 +459,106 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
   };
 
   const handleSave = async () => {
-    setSaveError(null);
+    setSaveError('');
+    if (!normalizeLookupText(formData.FirstName)) {
+      setSaveError('First name is required.');
+      setActiveStep(0);
+      return;
+    }
+    const phone = normalizeLookupText([phoneCode, phoneNumber].filter(Boolean).join(' '));
+    const latestClients = clients.length > 0 ? clients : await getClients(context).catch(() => [] as IClient[]);
+    const duplicate = findDuplicateClient(latestClients, formData.Email, phone);
+    if (duplicate) {
+      setDuplicateClient(duplicate);
+      setDuplicateMessage('A contact with this email or phone already exists. Open it if you have access, or submit an access request to the contact owner.');
+      return;
+    }
+
     setSaving(true);
     try {
-      const phone = normalizeLookupText([phoneCode, phoneNumber].filter(Boolean).join(' '));
+      if (canManageAssignments && normalizeLookupText(formData.NeedsOpportunity)) {
+        await ensureKairosClientManagementFields(context);
+      }
       const saved = await createClient(context, {
         ...formData,
         Phone: phone,
         CompanyName: normalizeLookupText(formData.CompanyName),
         JobTitle: normalizeLookupText(formData.JobTitle),
         ProjectName: normalizeLookupText(formData.ProjectName),
-        BusinessArm: (formData.BusinessArm || []).length
-          ? (formData.BusinessArm || []).map((entry) => normalizeLookupText(entry)).filter(Boolean)
-          : undefined,
+        BusinessArm: Array.isArray(formData.BusinessArm)
+          ? formData.BusinessArm.map((entry) => normalizeLookupText(entry)).filter(Boolean)
+          : (formData.BusinessArm ? [normalizeLookupText(String(formData.BusinessArm))].filter(Boolean) : undefined),
+        NeedsOpportunity: canManageAssignments ? normalizeLookupText(formData.NeedsOpportunity) : undefined,
         KCCContactPerson: formData.KCCContactPerson || undefined,
         KRISecondaryContact: formData.KRISecondaryContact || undefined,
       });
       onSaved(saved);
-    } catch (error: any) {
-      console.error('[ClientForm] Failed to save client', error);
-      setSaveError(error?.message || 'Failed to save contact. Please check your network and SharePoint list permissions.');
+    } catch (error) {
+      console.error('[ClientForm] Failed to save contact', error);
+      setSaveError(error instanceof Error ? error.message : 'Failed to save contact.');
     } finally {
       setSaving(false);
     }
   };
 
-  const selectedBusinessArms = Array.isArray(formData.BusinessArm) ? formData.BusinessArm : [];
+  const handleDuplicateAccessRequest = async () => {
+    if (!duplicateClient) return;
+    setRequestingAccess(true);
+    setDuplicateMessage('');
+    try {
+      const result = await requestContactAccess(context, duplicateClient, 'Duplicate contact found during onboarding; requester needs owner approval before details are shared.');
+      setAccessRequests((current) => [result, ...current.filter((request) => request.ID !== result.ID)]);
+      setDuplicateMessage(
+        result.Status === 'Approved'
+          ? 'Access is already approved. You can open the existing contact.'
+          : 'Access request submitted. The contact owner must approve before details are shared.'
+      );
+    } catch (error) {
+      setDuplicateMessage(error instanceof Error ? error.message : 'Failed to submit the access request.');
+    } finally {
+      setRequestingAccess(false);
+    }
+  };
 
-  return (
-    <Dialog open fullWidth maxWidth="md" onClose={onClose} onKeyDown={(e) => e.stopPropagation()} scroll="paper">
-      <DialogTitle sx={{ fontWeight: 800, fontSize: '1.15rem' }}>
+  const handleOpenDuplicate = () => {
+    if (!duplicateClient) return;
+    onClose();
+    navigate(`/clients/${duplicateClient.ID}`);
+  };
+
+  const selectedBusinessArms = Array.isArray(formData.BusinessArm) ? formData.BusinessArm : [];
+  const duplicateCanOpen = duplicateClient
+    ? canViewClient(duplicateClient, siteUser || context.pageContext.user, canManageAssignments, approvedClientIds)
+    : false;
+
+  const content = (
+    <>
+      <DialogTitle sx={{ fontWeight: 800, fontSize: '1.15rem', flexShrink: 0 }}>
         New Contact
       </DialogTitle>
-      <DialogContent dividers sx={{ pb: 1 }}>
+      <DialogContent dividers sx={{ pb: 1, flex: 1, overflowY: 'auto' }}>
         <Stack spacing={2.5}>
           <Box>
-            <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 2 }}>
-              {STEPS.map((label) => (
+            <Stepper activeStep={activeStep} alternativeLabel nonLinear sx={{ mb: 2 }}>
+              {STEPS.map((label, index) => (
                 <Step key={label}>
-                  <StepLabel>{label}</StepLabel>
+                  <StepButton
+                    onClick={() => setActiveStep(index)}
+                    sx={{
+                      cursor: 'pointer',
+                      borderRadius: 1,
+                      p: 0.5,
+                      '& .MuiStepLabel-label': {
+                        cursor: 'pointer',
+                        fontWeight: activeStep === index ? 700 : 500,
+                      },
+                      '&:hover': {
+                        bgcolor: 'action.hover',
+                      },
+                    }}
+                  >
+                    {label}
+                  </StepButton>
                 </Step>
               ))}
             </Stepper>
@@ -444,10 +568,37 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
                 <Typography sx={{ fontSize: '0.78rem' }}>{lookupMessage || 'Loading lookup data...'}</Typography>
               </Box>
             )}
+            {duplicateClient && (
+              <Alert
+                severity={duplicateCanOpen ? 'warning' : 'info'}
+                sx={{ mt: 1.5, borderRadius: 2 }}
+                action={(
+                  <Stack direction="row" spacing={1}>
+                    {duplicateCanOpen && (
+                      <Button color="inherit" size="small" onClick={handleOpenDuplicate}>
+                        Open existing
+                      </Button>
+                    )}
+                    {!duplicateCanOpen && (
+                      <Button color="inherit" size="small" disabled={requestingAccess} onClick={() => { void handleDuplicateAccessRequest(); }}>
+                        {requestingAccess ? 'Requesting...' : 'Request access'}
+                      </Button>
+                    )}
+                  </Stack>
+                )}
+              >
+                {duplicateMessage || 'Duplicate contact detected.'}
+              </Alert>
+            )}
           </Box>
 
-          {activeStep === 0 && (
-            <Box sx={fieldGrid}>
+          {saveError && (
+            <Alert severity="error" sx={{ borderRadius: 2 }}>
+              {saveError}
+            </Alert>
+          )}
+
+          <Box sx={{ ...fieldGrid, display: activeStep === 0 ? 'grid' : 'none' }}>
               <TextField
                 label="First Name"
                 size="small"
@@ -462,13 +613,6 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
                 value={formData.LastName || ''}
                 onChange={(event) => setField('LastName', event.target.value)}
               />
-              <LookupField
-                label="Company"
-                value={normalizeLookupText(formData.CompanyName)}
-                options={companyOptions}
-                helperText="Search existing companies or enter a new company."
-                onChange={(value) => setField('CompanyName', value)}
-              />
               <TextField
                 select
                 label="Gender"
@@ -476,6 +620,12 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
                 fullWidth
                 value={formData.Gender || ''}
                 onChange={(event) => setField('Gender', event.target.value)}
+                SelectProps={{
+                  MenuProps: {
+                    disablePortal: true,
+                    PaperProps: { sx: { zIndex: 2147483647 } },
+                  },
+                }}
               >
                 <MenuItem value="">
                   <em>Unset</em>
@@ -496,15 +646,13 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
                 onChange={(event) => setField('BirthdayDate', event.target.value)}
               />
             </Box>
-          )}
 
-          {activeStep === 1 && (
-            <Box sx={fieldGrid}>
+          <Box sx={{ ...fieldGrid, display: activeStep === 1 ? 'grid' : 'none' }}>
               <LookupField
-                label="Company"
+                label="Company / Organisation"
                 value={normalizeLookupText(formData.CompanyName)}
                 options={companyOptions}
-                helperText="Associated company."
+                helperText="Search existing companies or type a new company."
                 onChange={(value) => setField('CompanyName', value)}
               />
               <MultiLookupField
@@ -553,10 +701,8 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
                 />
               )}
             </Box>
-          )}
 
-          {activeStep === 2 && (
-            <Box sx={fieldGrid}>
+          <Box sx={{ ...fieldGrid, display: activeStep === 2 ? 'grid' : 'none' }}>
               <TextField
                 label="Email"
                 size="small"
@@ -585,15 +731,8 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
                 onChange={(event) => setField('InstagramHandle', event.target.value)}
               />
             </Box>
-          )}
 
-          {activeStep === 3 && (
-            <Box sx={{ display: 'grid', gap: 2 }}>
-              {saveError && (
-                <Alert severity="error" sx={{ borderRadius: 2 }}>
-                  {saveError}
-                </Alert>
-              )}
+          <Box sx={{ display: activeStep === 3 ? 'grid' : 'none', gap: 2 }}>
               <TextField
                 select
                 label="KRI Stage"
@@ -601,6 +740,12 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
                 fullWidth
                 value={formData.KRIStage || 'Knowledge'}
                 onChange={(event) => setField('KRIStage', event.target.value)}
+                SelectProps={{
+                  MenuProps: {
+                    disablePortal: true,
+                    PaperProps: { sx: { zIndex: 2147483647 } },
+                  },
+                }}
               >
                 {STAGE_OPTIONS.map((option) => (
                   <MenuItem key={option} value={option}>
@@ -617,6 +762,18 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
                 value={formData.Notes || ''}
                 onChange={(event) => setField('Notes', event.target.value)}
               />
+              {canManageAssignments && (
+                <TextField
+                  label="Needs & Opportunity"
+                  size="small"
+                  fullWidth
+                  multiline
+                  minRows={4}
+                  helperText="Admin-only commercial need and revenue opportunity intelligence."
+                  value={formData.NeedsOpportunity || ''}
+                  onChange={(event) => setField('NeedsOpportunity', event.target.value)}
+                />
+              )}
               <Box sx={{ p: 2, borderRadius: 2, border: '1px solid #E8ECF0', background: '#FAFBFC' }}>
                 <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: '#7B8FA6', letterSpacing: '0.08em', textTransform: 'uppercase', mb: 1 }}>
                   Review
@@ -638,10 +795,9 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
                 </Typography>
               </Box>
             </Box>
-          )}
         </Stack>
       </DialogContent>
-      <DialogActions sx={{ px: 3, py: 2 }}>
+      <DialogActions sx={{ px: 3, py: 2, flexShrink: 0, borderTop: '1px solid #E8ECF0', background: '#FFFFFF' }}>
         <Button onClick={onClose} sx={{ borderRadius: 2, fontWeight: 700 }}>
           Cancel
         </Button>
@@ -666,19 +822,42 @@ export default function ClientForm({ context, onClose, onSaved, initialValues }:
             variant="contained"
             onClick={() => { void handleSave(); }}
             disabled={saving}
-            sx={{ borderRadius: 2, fontWeight: 700, minWidth: 140 }}
+            sx={{ borderRadius: 2, fontWeight: 700, minWidth: 128 }}
           >
-            {saving ? (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CircularProgress size={16} color="inherit" />
-                <span>Saving...</span>
-              </Box>
-            ) : (
-              'Save Contact'
-            )}
+            {saving ? 'Saving...' : 'Save Contact'}
           </Button>
         )}
       </DialogActions>
+    </>
+  );
+
+  if (inline) {
+    return content;
+  }
+
+  return (
+    <Dialog
+      open
+      fullWidth
+      maxWidth="lg"
+      onClose={onClose}
+      onKeyDown={(e) => e.stopPropagation()}
+      scroll="paper"
+      container={typeof document !== 'undefined' ? document.body : undefined}
+      sx={{ zIndex: 9999999999 }}
+      PaperProps={{
+        sx: {
+          borderRadius: 3,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          width: 'min(1100px, calc(100vw - 24px))',
+          maxHeight: 'calc(100dvh - 24px)',
+          zIndex: 9999999999,
+        },
+      }}
+    >
+      {content}
     </Dialog>
   );
 }
