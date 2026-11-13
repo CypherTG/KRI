@@ -31,7 +31,13 @@ export function getDb(): Sql {
     idle_timeout: 60,
     connect_timeout: 10,
     keep_alive: 30,
-    fetch_types: false,
+    // MUST stay true: `fetch_types: false` skips postgres.js's pg_type
+    // bootstrap, so array serializers never register. JS array parameters then
+    // serialize via `'' + x` (Array.toString() → "a,b", no braces) and
+    // Postgres rejects every one with `malformed array literal`. This broke
+    // all text[] writes (business_arms, biodata lists, lookups unnest) and
+    // reads (ANY($1::text[])). `prepare: false` is kept for the Neon pooler.
+    fetch_types: true,
     backoff: () => 0,
     // Neon and most managed providers terminate TLS with a proxy chain that
     // does not present a cert postgres.js can verify.

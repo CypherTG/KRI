@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { requireSession } from '../_lib/auth.js';
-import { methodGuard, readJson, sendJson, toTextArray, HttpError } from '../_lib/http.js';
+import { methodGuard, readJson, sendJson, toPgArray, HttpError } from '../_lib/http.js';
 import { raw, rawOne } from '../_lib/db.js';
 import { canSeeEverything } from '../_lib/scope.js';
 
@@ -186,7 +186,7 @@ export default methodGuard(['POST'], async (req, res) => {
             current === 'Required Info';
           if (value && empty) {
             if (field === 'business_arms') {
-              values.push(toTextArray(value));
+              values.push(toPgArray(value));
               assignments.push(`${field} = $${values.length}::text[]`);
             } else {
               values.push(value);
@@ -207,7 +207,7 @@ export default methodGuard(['POST'], async (req, res) => {
           record.email ?? null,
           record.phone ?? null,
           record.company_name ?? null,
-          toTextArray(record.business_arms),
+          toPgArray(record.business_arms),
           record.job_title ?? null,
           record.project_name ?? null,
           record.kri_stage ?? 'Knowledge',

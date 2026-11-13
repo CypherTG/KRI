@@ -110,6 +110,17 @@ export function toTextArray(value: unknown): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Converts any array/string into a PostgreSQL array literal string: '{"item1","item2"}' or '{}'.
+ * Guarantees correct deserialization in PostgreSQL regardless of driver encoding.
+ */
+export function toPgArray(value: unknown): string {
+  const items = toTextArray(value);
+  if (!items.length) return '{}';
+  const escaped = items.map((item) => `"${String(item).replace(/["\\]/g, '\\$&')}"`);
+  return `{${escaped.join(',')}}`;
+}
+
 /** Accepts Date | ISO string | '' and returns YYYY-MM-DD or null. */
 export function toDateOnly(value: unknown): string | null {
   if (!value) return null;

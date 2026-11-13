@@ -1,5 +1,5 @@
 import { requireSession } from '../_lib/auth.js';
-import { methodGuard, readJson, sendJson, toTextArray, toDateOnly, optionalString, HttpError } from '../_lib/http.js';
+import { methodGuard, readJson, sendJson, toTextArray, toPgArray, toDateOnly, optionalString, HttpError } from '../_lib/http.js';
 import { raw, rawOne } from '../_lib/db.js';
 import { assertClientReadable, assertClientWritable, canSeeEverything } from '../_lib/scope.js';
 import { mapClient, CLIENT_JOINS, CLIENT_PERSON_COLUMNS } from '../_lib/mappers.js';
@@ -92,7 +92,7 @@ export default methodGuard(['GET', 'PATCH', 'DELETE'], async (req, res) => {
   const phone = pick('phone', 'Phone');
   if (was(phone)) setText('phone', phone, 60);
   const arms = pick('businessArm', 'BusinessArm', 'businessArms', 'business_arms');
-  if (was(arms)) assignments.push(`business_arms = ${bind(toTextArray(arms))}::text[]`);
+  if (was(arms)) assignments.push(`business_arms = ${bind(toPgArray(arms))}::text[]`);
   const jobTitle = pick('jobTitle', 'JobTitle');
   if (was(jobTitle)) setText('job_title', jobTitle, 300);
   const projectName = pick('projectName', 'ProjectName');

@@ -1,5 +1,5 @@
 import { requireSession } from '../_lib/auth.js';
-import { methodGuard, readJson, sendJson, toTextArray, toDateOnly, optionalString, requireString, HttpError } from '../_lib/http.js';
+import { methodGuard, readJson, sendJson, toTextArray, toPgArray, toDateOnly, optionalString, requireString, HttpError } from '../_lib/http.js';
 import { raw, rawOne } from '../_lib/db.js';
 import { scopeSql, canSeeEverything, CLIENT_OWNERS } from '../_lib/scope.js';
 import { mapClient, CLIENT_JOINS, CLIENT_PERSON_COLUMNS } from '../_lib/mappers.js';
@@ -64,7 +64,7 @@ export default methodGuard(['GET', 'POST'], async (req, res) => {
       optionalString(body.email ?? body.Email, 300),
       optionalString(body.phone ?? body.Phone, 60),
       companyName,
-      toTextArray(body.businessArm ?? body.BusinessArm ?? body.businessArms ?? body.business_arms),
+      toPgArray(body.businessArm ?? body.BusinessArm ?? body.businessArms ?? body.business_arms),
       optionalString(body.jobTitle ?? body.JobTitle, 300),
       optionalString(body.projectName ?? body.ProjectName, 300),
       stage,
