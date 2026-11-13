@@ -3,7 +3,7 @@ import { methodGuard, readJson, sendJson, requireString, HttpError } from '../_l
 import { AIROS_SYSTEM_PROMPT } from '../_lib/airosPrompt.js';
 import { executeTool } from '../_lib/airosTools.js';
 
-const DEFAULT_MODEL = 'gemini-2.0-flash';
+const DEFAULT_MODEL = 'gemini-flash-lite-latest';
 const MAX_TOOL_ROUNDS = 12;
 
 const TOOL_DECLARATIONS = [
@@ -244,7 +244,7 @@ export default methodGuard(['POST'], async (req, res) => {
         toolResult = { error: error instanceof Error ? error.message : String(error) };
       }
       contents.push({
-        role: 'function',
+        role: 'user',
         parts: [{ functionResponse: { name, response: { result: toolResult } } }],
       });
       continue;
