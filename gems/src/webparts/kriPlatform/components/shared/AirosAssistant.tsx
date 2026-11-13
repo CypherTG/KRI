@@ -212,11 +212,15 @@ export default function AirosAssistant({ context, routeLabel, profilePhotoUrl: p
       };
       appendAirosConversationMessage(context, aMsg);
       setMessages(cur => [...cur, aMsg]);
-    } catch (err) {
+    } catch (err: any) {
       console.error('[AIROS]', err);
+      const errorMessage =
+        (err?.message && typeof err.message === 'string' && !err.message.includes('[object Object]'))
+          ? err.message
+          : 'Something went wrong. Please try again.';
       const eMsg: AirosMessage = {
         id: createAirosMessageId(), role: 'assistant',
-        content: 'Something went wrong. Please try again.',
+        content: errorMessage,
         createdAt: new Date().toISOString(), userId, sessionId, conversationId,
       };
       appendAirosConversationMessage(context, eMsg);

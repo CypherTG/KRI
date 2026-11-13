@@ -199,7 +199,6 @@ export default methodGuard(['POST'], async (req, res) => {
       generationConfig: {
         temperature: 0.3,
         maxOutputTokens: 2048,
-        thinkingConfig: { thinkingBudget: 0 },
       },
     };
 
@@ -212,7 +211,14 @@ export default methodGuard(['POST'], async (req, res) => {
     const rawText = await upstream.text();
     if (!upstream.ok) {
       console.error('[airos] upstream error', upstream.status, rawText.slice(0, 500));
-      throw new HttpError(502, `AIROS request failed (${upstream.status}).`);
+      let message = `AIROS request failed (${upstream.status}).`;
+      try {
+        const parsedErr = JSON.parse(rawText);
+        if (parsedErr?.error?.message) {
+          message = parsedErr.error.message;
+        }
+      } catch {}
+      throw new HttpError(502, message);
     }
 
     let parsed: any;
@@ -238,7 +244,7 @@ export default methodGuard(['POST'], async (req, res) => {
         toolResult = { error: error instanceof Error ? error.message : String(error) };
       }
       contents.push({
-        role: 'user',
+        role: 'function',
         parts: [{ functionResponse: { name, response: { result: toolResult } } }],
       });
       continue;

@@ -410,7 +410,8 @@ export async function executeTool(
     }
 
     case 'search_company_acumen': {
-      const params: any[] = [user.id, user.email];
+      const params: any[] = [];
+      const scopePredicate = scopeSql(user, 'c', CLIENT_OWNERS, 1, params);
       const filters: string[] = [`lower(COALESCE(ca.company_name,'')) <> ''`];
       if (String(args.company_name ?? '').trim()) {
         params.push(like(args.company_name));
@@ -420,7 +421,7 @@ export async function executeTool(
       filters.push(`EXISTS (
         SELECT 1 FROM clients c
          WHERE lower(c.company_name) = lower(ca.company_name)
-           AND (${scopeSql(user, 'c', CLIENT_OWNERS, 3, params)})
+           AND (${scopePredicate})
       )`);
 
       const rows = await raw<any>(
