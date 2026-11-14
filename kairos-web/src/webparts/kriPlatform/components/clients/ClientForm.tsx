@@ -382,16 +382,27 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
     let cancelled = false;
 
     async function hydrateLookups() {
-      const shouldLoadClients = clients.length === 0;
-      const shouldLoadUsers = canManageAssignments && users.length === 0;
-
-      if (!shouldLoadClients && !shouldLoadUsers) return;
-
       setLookupLoading(true);
       const messages: string[] = [];
 
       try {
-        if (shouldLoadClients) {
+        const lookupData = await apiRequest<{ companies: string[]; projects: string[]; jobTitles: string[] }>('/lookups').catch(() => null);
+        if (lookupData && !cancelled) {
+          setLookupRegistry({
+            companies: lookupData.companies || [],
+            projects: lookupData.projects || [],
+            jobTitles: lookupData.jobTitles || [],
+          });
+          if (lookupData.companies?.length) {
+            messages.push(`${lookupData.companies.length} companies`);
+          }
+        }
+      } catch (error) {
+        console.warn('[ClientForm] Failed to load lookup registry', error);
+      }
+
+      try {
+        if (clients.length === 0) {
           const latestClients = await getClients(context);
           if (!cancelled) setClients(latestClients);
           messages.push(`${latestClients.length} contacts loaded`);
@@ -401,7 +412,7 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
       }
 
       try {
-        if (shouldLoadUsers) {
+        if (canManageAssignments && users.length === 0) {
           const latestUsers = await getKRIUsers(context);
           if (!cancelled) setUsers(latestUsers);
           messages.push(`${latestUsers.length} users loaded`);
@@ -676,6 +687,26 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
                 helperText="Search existing projects or type a new project."
                 onChange={(value) => setField('ProjectName', value)}
               />
+              <TextField
+                select
+                label="Relationship Stage (KRI Stage)"
+                size="small"
+                fullWidth
+                value={formData.KRIStage || 'Knowledge'}
+                onChange={(event) => setField('KRIStage', event.target.value)}
+                SelectProps={{
+                  MenuProps: {
+                    disablePortal: true,
+                    PaperProps: { sx: { zIndex: 2147483647 } },
+                  },
+                }}
+              >
+                {STAGE_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </TextField>
               {canManageAssignments && (
                 <UserLookupField
                   label="Primary Owner"
@@ -730,35 +761,13 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
                 value={formData.InstagramHandle || ''}
                 onChange={(event) => setField('InstagramHandle', event.target.value)}
               />
-            </Box>
-
-          <Box sx={{ display: activeStep === 3 ? 'grid' : 'none', gap: 2 }}>
-              <TextField
-                select
-                label="KRI Stage"
-                size="small"
-                fullWidth
-                value={formData.KRIStage || 'Knowledge'}
-                onChange={(event) => setField('KRIStage', event.target.value)}
-                SelectProps={{
-                  MenuProps: {
-                    disablePortal: true,
-                    PaperProps: { sx: { zIndex: 2147483647 } },
-                  },
-                }}
-              >
-                {STAGE_OPTIONS.map((option) => (
-                  <MenuItem key={option} value={option}>
-                    {option}
-                  </MenuItem>
-                ))}
-              </TextField>
               <TextField
                 label="Notes"
                 size="small"
                 fullWidth
                 multiline
-                minRows={5}
+                minRows={3}
+                sx={{ gridColumn: { xs: '1', md: '1 / -1' } }}
                 value={formData.Notes || ''}
                 onChange={(event) => setField('Notes', event.target.value)}
               />
@@ -768,31 +777,154 @@ export default function ClientForm({ context, onClose, onSaved, initialValues, i
                   size="small"
                   fullWidth
                   multiline
-                  minRows={4}
+                  minRows={3}
+                  sx={{ gridColumn: { xs: '1', md: '1 / -1' } }}
                   helperText="Admin-only commercial need and revenue opportunity intelligence."
                   value={formData.NeedsOpportunity || ''}
                   onChange={(event) => setField('NeedsOpportunity', event.target.value)}
                 />
               )}
-              <Box sx={{ p: 2, borderRadius: 2, border: '1px solid #E8ECF0', background: '#FAFBFC' }}>
-                <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: '#7B8FA6', letterSpacing: '0.08em', textTransform: 'uppercase', mb: 1 }}>
-                  Review
-                </Typography>
-                <Typography sx={{ fontSize: '0.78rem', color: '#6B7280', mb: 0.4 }}>
-                  Company selected: <strong>{normalizeLookupText(formData.CompanyName) || 'Not selected'}</strong>
-                </Typography>
-                <Typography sx={{ fontSize: '0.85rem', color: '#1A1D23' }}>
-                  {normalizeLookupText(formData.FirstName)} {normalizeLookupText(formData.LastName)}
-                </Typography>
-                <Typography sx={{ fontSize: '0.78rem', color: '#6B7280' }}>
-                  {normalizeLookupText(formData.CompanyName) || 'No company'} {normalizeLookupText(formData.JobTitle) ? `• ${normalizeLookupText(formData.JobTitle)}` : ''}
-                </Typography>
-                <Typography sx={{ fontSize: '0.78rem', color: '#6B7280' }}>
-                  {normalizeLookupText(formData.ProjectName) ? `Project: ${normalizeLookupText(formData.ProjectName)}` : 'No project set'}
-                </Typography>
-                <Typography sx={{ fontSize: '0.78rem', color: '#6B7280' }}>
-                  Phone: {normalizeLookupText([phoneCode, phoneNumber].filter(Boolean).join(' ')) || 'Not set'}
-                </Typography>
+            </Box>
+
+          <Box sx={{ display: activeStep === 3 ? 'flex' : 'none', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ p: 2, borderRadius: 2.5, border: '1px solid #E2E8F0', bgcolor: '#F8FAFC' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                  <Typography sx={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    1. Identity & Profile
+                  </Typography>
+                  <Button size="small" variant="text" onClick={() => setActiveStep(0)} sx={{ fontWeight: 700, fontSize: '0.75rem' }}>
+                    Edit
+                  </Button>
+                </Box>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="caption" color="text.secondary">Full Name</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 700, color: '#0F172A' }}>
+                      {[formData.FirstName, formData.LastName].filter(Boolean).join(' ') || 'Not specified'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <Typography variant="caption" color="text.secondary">Gender</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{formData.Gender || 'Unset'}</Typography>
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <Typography variant="caption" color="text.secondary">Birthday</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{formData.BirthdayDate || 'Not set'}</Typography>
+                  </Grid>
+                </Grid>
+              </Box>
+
+              <Box sx={{ p: 2, borderRadius: 2.5, border: '1px solid #E2E8F0', bgcolor: '#F8FAFC' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                  <Typography sx={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    2. Organisation & Relationship
+                  </Typography>
+                  <Button size="small" variant="text" onClick={() => setActiveStep(1)} sx={{ fontWeight: 700, fontSize: '0.75rem' }}>
+                    Edit
+                  </Button>
+                </Box>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="caption" color="text.secondary">Company / Organisation</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 700, color: '#0F172A' }}>
+                      {normalizeLookupText(formData.CompanyName) || 'None / Personal'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="caption" color="text.secondary">Job Title</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {normalizeLookupText(formData.JobTitle) || 'Not specified'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="caption" color="text.secondary">Business Arm(s)</Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                      {(selectedBusinessArms.length ? selectedBusinessArms : ['None']).map((arm) => (
+                        <Chip key={arm} label={arm} size="small" sx={{ fontWeight: 700, fontSize: '0.72rem' }} />
+                      ))}
+                    </Box>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="caption" color="text.secondary">Project</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {normalizeLookupText(formData.ProjectName) || 'None'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="caption" color="text.secondary">Relationship Stage</Typography>
+                    <Box sx={{ mt: 0.5 }}>
+                      <Chip
+                        label={formData.KRIStage || 'Knowledge'}
+                        color={formData.KRIStage === 'Intimacy' ? 'error' : formData.KRIStage === 'Rapport' ? 'warning' : 'primary'}
+                        size="small"
+                        sx={{ fontWeight: 700 }}
+                      />
+                    </Box>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="caption" color="text.secondary">Primary Owner</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {formData.KCCContactPerson ? userDisplayName(formData.KCCContactPerson as any) : 'Unassigned'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="caption" color="text.secondary">Secondary Owner</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {formData.KRISecondaryContact ? userDisplayName(formData.KRISecondaryContact as any) : 'None'}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </Box>
+
+              <Box sx={{ p: 2, borderRadius: 2.5, border: '1px solid #E2E8F0', bgcolor: '#F8FAFC' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                  <Typography sx={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    3. Contact Details & Notes
+                  </Typography>
+                  <Button size="small" variant="text" onClick={() => setActiveStep(2)} sx={{ fontWeight: 700, fontSize: '0.75rem' }}>
+                    Edit
+                  </Button>
+                </Box>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="caption" color="text.secondary">Email</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{formData.Email || 'Not set'}</Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="caption" color="text.secondary">Phone</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {[phoneCode, phoneNumber].filter(Boolean).join(' ') || 'Not set'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="caption" color="text.secondary">LinkedIn</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, wordBreak: 'break-all' }}>
+                      {formData.LinkedInURL || 'Not provided'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="caption" color="text.secondary">Instagram</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {formData.InstagramHandle || 'Not provided'}
+                    </Typography>
+                  </Grid>
+                  {formData.Notes && (
+                    <Grid item xs={12}>
+                      <Typography variant="caption" color="text.secondary">Notes</Typography>
+                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', color: '#334155' }}>
+                        {formData.Notes}
+                      </Typography>
+                    </Grid>
+                  )}
+                  {formData.NeedsOpportunity && (
+                    <Grid item xs={12}>
+                      <Typography variant="caption" color="text.secondary">Needs & Opportunity</Typography>
+                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', color: '#334155' }}>
+                        {formData.NeedsOpportunity}
+                      </Typography>
+                    </Grid>
+                  )}
+                </Grid>
               </Box>
             </Box>
         </Stack>

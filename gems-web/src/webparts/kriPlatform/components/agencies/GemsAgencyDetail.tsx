@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Box, Typography, Paper, Breadcrumbs, Link, Stack, Grid, CircularProgress, Button, TextField,
+  Alert, Box, Typography, Paper, Breadcrumbs, Link, Stack, Grid, CircularProgress, Button, TextField,
 } from '@mui/material';
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
 import { KriContext } from '../../../../types/kri';
@@ -27,6 +27,8 @@ export default function GemsAgencyDetail({ context }: Props) {
   const [acumen, setAcumen] = useState<CompanyAcumenRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [uploadSuccess, setUploadSuccess] = useState('');
   const [docSearch, setDocSearch] = useState('');
 
   const filteredAcumen = useMemo(() => {
@@ -70,12 +72,16 @@ export default function GemsAgencyDetail({ context }: Props) {
     const file = e.target.files?.[0];
     if (!file || !agency) return;
     setUploading(true);
+    setUploadError('');
+    setUploadSuccess('');
     try {
       await saveCompanyAcumenFile(context, agency.key, agency.name, file);
       const updated = await getCompanyAcumenRecords(context, agency.key).catch((): CompanyAcumenRecord[] => []);
       setAcumen(updated);
-    } catch {
-      // upload failed silently
+      setUploadSuccess(`"${file.name}" uploaded successfully.`);
+    } catch (err: any) {
+      console.error('[Acumen upload failed]', err);
+      setUploadError(err?.message || 'Failed to upload document. Please try again.');
     } finally {
       setUploading(false);
     }
@@ -204,6 +210,16 @@ export default function GemsAgencyDetail({ context }: Props) {
             <Typography sx={{ fontSize: '0.82rem', color: '#4A5568', mb: 1.25 }}>
               Reference documents and regulatory filings for this agency.
             </Typography>
+            {uploadError && (
+              <Alert severity="error" onClose={() => setUploadError('')} sx={{ mb: 1.5, borderRadius: 2 }}>
+                {uploadError}
+              </Alert>
+            )}
+            {uploadSuccess && (
+              <Alert severity="success" onClose={() => setUploadSuccess('')} sx={{ mb: 1.5, borderRadius: 2 }}>
+                {uploadSuccess}
+              </Alert>
+            )}
             {acumen.length > 3 && (
               <TextField
                 size="small"

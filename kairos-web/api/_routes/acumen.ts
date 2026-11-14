@@ -35,6 +35,29 @@ export default methodGuard(['GET', 'POST', 'DELETE'], async (req, res) => {
   const user = await requireSession(req);
 
   if (req.method === 'GET') {
+    const downloadId = String(req.query.downloadId ?? req.query.id ?? '').trim();
+    if (downloadId && !req.query.companyKey) {
+      const row = await rawOne<any>('SELECT * FROM company_acumen WHERE id = $1', [downloadId]);
+      if (!row) throw new HttpError(404, 'Document not found.');
+      const fileUrl = String(row.file_url || '');
+      if (/^https?:\/\//i.test(fileUrl)) {
+        res.writeHead(302, { Location: fileUrl });
+        return res.end();
+      }
+      if (fileUrl.startsWith('data:')) {
+        const match = fileUrl.match(/^data:([^;]+);base64,(.+)$/);
+        if (match) {
+          const contentType = match[1] || row.content_type || 'application/octet-stream';
+          const buffer = Buffer.from(match[2], 'base64');
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Content-Length', buffer.length);
+          res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(row.file_name || 'document')}"`);
+          return res.end(buffer);
+        }
+      }
+      throw new HttpError(404, 'Document contents not available.');
+    }
+
     const companyKey = String(req.query.companyKey ?? '').trim().toLowerCase();
     if (!companyKey) return sendJson(res, 200, { records: [] });
     const rows = await raw<any>(

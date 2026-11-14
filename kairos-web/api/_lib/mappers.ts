@@ -234,6 +234,8 @@ export function mapCompany(row: any) {
 
 export function mapAcumen(row: any) {
   if (!row) return null;
+  const isDirectHttp = row.file_url && /^https?:\/\//i.test(row.file_url);
+  const fileUrl = isDirectHttp ? row.file_url : `/api/acumen?downloadId=${row.id}`;
   return {
     ID: asText(row.id),
     Id: asText(row.id),
@@ -241,7 +243,7 @@ export function mapAcumen(row: any) {
     CompanyKey: asText(row.company_key),
     CompanyName: asText(row.company_name),
     FileName: asText(row.file_name),
-    FileUrl: asText(row.file_url),
+    FileUrl: fileUrl,
     BlobPath: asText(row.blob_path),
     ContentType: asText(row.content_type),
     SizeBytes: row.size_bytes === null ? null : Number(row.size_bytes),

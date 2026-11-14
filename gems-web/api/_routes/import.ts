@@ -138,7 +138,7 @@ export default methodGuard(['POST'], async (req, res) => {
       if (value && value !== '0') record[field] = value;
     }
 
-    if (!record._title && !record.first_name && !record.last_name) {
+    if (record._title && !record.first_name && !record.last_name) {
       const parts = String(record._title ?? '').split(/\s+/).filter(Boolean);
       if (parts.length) {
         record.first_name = parts[0];

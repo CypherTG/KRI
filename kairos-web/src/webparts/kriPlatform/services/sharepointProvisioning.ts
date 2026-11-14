@@ -185,7 +185,8 @@ export async function saveCompanyAcumenFile(
   companyName: string,
   file: File,
 ): Promise<void> {
-  if (!isManagementAdminUser(context?.session as any)) {
+  const isAdmin = Boolean((context?.session as any)?.isAdmin) || isManagementAdminUser(context?.session as any);
+  if (!isAdmin) {
     // Uploading a company brief is an administrative action; the server
     // enforces this too, but failing early gives a better message.
     throw new Error('Only administrators can upload company documents.');
