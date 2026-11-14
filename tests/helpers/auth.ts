@@ -2,13 +2,17 @@ import { expect, type APIRequestContext } from '@playwright/test';
 
 export const hasCredentials = Boolean(process.env.E2E_EMAIL && process.env.E2E_PASSWORD);
 
+export const KAIROS_BASE_URL = process.env.BASE_URL || 'https://konstructum-kairos-one.vercel.app';
+export const GEMS_BASE_URL = process.env.GEMS_BASE_URL || 'https://konstructum-gems-six.vercel.app';
+
 /**
  * Signs in through the real login endpoint. The session cookie is stored on the
  * request context, and `page.context().request` shares cookies with the page, so
  * both API and UI tests can use it.
  */
-export async function login(request: APIRequestContext) {
-  const res = await request.post('/api/auth/login', {
+export async function login(request: APIRequestContext, origin?: string) {
+  const targetUrl = origin ? `${origin}/api/auth/login` : '/api/auth/login';
+  const res = await request.post(targetUrl, {
     data: { email: process.env.E2E_EMAIL, password: process.env.E2E_PASSWORD },
   });
   const body = await res.text();
