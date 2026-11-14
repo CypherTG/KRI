@@ -5,7 +5,7 @@
  * touched, and the one permitted address used here is the pinned administrator
  * signing in with credentials rather than registering.
  */
-const base = (process.argv[2] || 'https://konstructum-kairos.vercel.app').replace(/\/$/, '');
+const base = (process.argv[2] || 'https://konstructum-kairos-one.vercel.app').replace(/\/$/, '');
 
 let failures = 0;
 function check(label, ok, detail) {

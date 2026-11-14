@@ -57,3 +57,11 @@ pwshprofile/
 Screenshot*.png
 Screenshot*.jpeg
 Screenshot*.jpg
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

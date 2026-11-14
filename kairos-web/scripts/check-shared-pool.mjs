@@ -7,7 +7,7 @@
  *
  * Read-only. Set the credentials of a NON-ADMIN account.
  */
-const base = (process.argv[2] || 'https://konstructum-kairos.vercel.app').replace(/\/$/, '');
+const base = (process.argv[2] || 'https://konstructum-kairos-one.vercel.app').replace(/\/$/, '');
 
 const email = process.env.KAIROS_EMAIL;
 const password = process.env.KAIROS_PASSWORD;

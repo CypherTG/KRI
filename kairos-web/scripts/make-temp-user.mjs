@@ -18,7 +18,7 @@ if (!process.env.DATABASE_URL) {
   }
 }
 
-const base = (process.env.KAIROS_URL || 'https://konstructum-kairos.vercel.app').replace(/\/$/, '');
+const base = (process.env.KAIROS_URL || 'https://konstructum-kairos-one.vercel.app').replace(/\/$/, '');
 const stamp = Date.now();
 const email = `poolcheck${stamp}@konstructum.com`;
 const password = 'Pool-Check-Password-1';

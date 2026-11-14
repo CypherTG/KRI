@@ -5,7 +5,7 @@
  * production is left exactly as it was found. This exists because a new user
  * has no way to create an account until registration is proven to work.
  */
-const base = (process.argv[2] || 'https://konstructum-kairos.vercel.app').replace(/\/$/, '');
+const base = (process.argv[2] || 'https://konstructum-kairos-one.vercel.app').replace(/\/$/, '');
 const probeEmail = `kairos-registration-probe-${Date.now()}@example.invalid`;
 const password = 'Registration-Probe-Password-1';
 

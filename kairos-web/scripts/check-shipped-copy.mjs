@@ -5,7 +5,7 @@
  * proves nothing about what a browser receives. This fetches the built entry
  * chunk and asserts the banned phrases are absent.
  */
-const base = (process.argv[2] || 'https://konstructum-kairos.vercel.app').replace(/\/$/, '');
+const base = (process.argv[2] || 'https://konstructum-kairos-one.vercel.app').replace(/\/$/, '');
 
 const BANNED = [
   'SharePoint',

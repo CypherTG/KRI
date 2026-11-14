@@ -96,7 +96,7 @@ function vercelApiLocalPlugin(): Plugin {
 
 export default defineConfig(({ mode }) => {
   loadDotEnvIntoProcess(mode);
-  const remoteTarget = process.env.REMOTE_API_URL || 'https://konstructum-kairos.vercel.app';
+  const remoteTarget = process.env.REMOTE_API_URL || 'https://konstructum-kairos-one.vercel.app';
 
   return {
     plugins: [

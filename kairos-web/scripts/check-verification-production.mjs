@@ -13,7 +13,7 @@
  * It cannot complete the final redemption, because that needs the code from the
  * mailbox. It reports what it could not verify rather than pretending.
  */
-const base = (process.argv[2] || 'https://konstructum-kairos.vercel.app').replace(/\/$/, '');
+const base = (process.argv[2] || 'https://konstructum-kairos-one.vercel.app').replace(/\/$/, '');
 const password = 'Verify-Probe-Password-1';
 const stamp = Date.now();
 const probeEmail = `verify-probe-${stamp}@konstructum.com`;

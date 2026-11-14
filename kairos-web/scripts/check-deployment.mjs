@@ -1,9 +1,9 @@
 /**
  * Smoke-checks a deployed KAIROS instance over plain HTTP.
  *
- *   node scripts/check-deployment.mjs https://konstructum-kairos.vercel.app
+ *   node scripts/check-deployment.mjs https://konstructum-kairos-one.vercel.app
  */
-const base = (process.argv[2] || 'https://konstructum-kairos.vercel.app').replace(/\/$/, '');
+const base = (process.argv[2] || 'https://konstructum-kairos-one.vercel.app').replace(/\/$/, '');
 
 let failed = 0;
 function check(label, ok, detail) {

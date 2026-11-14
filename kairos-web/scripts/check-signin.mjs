@@ -5,7 +5,7 @@
  * The password is read from KAIROS_PASSWORD and is never written to the URL,
  * the database or any file. Nothing is created or modified.
  */
-const base = (process.argv[2] || 'https://konstructum-kairos.vercel.app').replace(/\/$/, '');
+const base = (process.argv[2] || 'https://konstructum-kairos-one.vercel.app').replace(/\/$/, '');
 const email = process.env.KAIROS_EMAIL;
 const password = process.env.KAIROS_PASSWORD;
 

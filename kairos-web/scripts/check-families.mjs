@@ -5,7 +5,7 @@
  *
  * Read-only.
  */
-const base = (process.argv[2] || 'https://konstructum-kairos.vercel.app').replace(/\/$/, '');
+const base = (process.argv[2] || 'https://konstructum-kairos-one.vercel.app').replace(/\/$/, '');
 
 const FAMILIES = ['Konstructum', 'PMT7 Integrated', 'Interkonstruct', 'NGneered Projects'];
 

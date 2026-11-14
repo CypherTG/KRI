@@ -148,7 +148,7 @@ history, CRUD, admin management and import.
 ## Deployment notes
 
 - Vercel CLI commands on this project need `--scope konstructum1`.
-- The production domain is `konstructum-kairos.vercel.app`.
+- The production domain is `konstructum-kairos-one.vercel.app`.
 - `GET /api/health` returns 503 until every required variable is present; that
   is the quickest way to confirm a deployment is fully configured.
 - The original web part contained a committed Gemini API key. It should be

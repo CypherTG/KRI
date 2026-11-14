@@ -6,7 +6,7 @@
  * JWT is issued as an HttpOnly cookie, and that cookie then authorises a real
  * protected read plus an authenticated write.
  */
-const base = (process.argv[2] || 'https://konstructum-kairos.vercel.app').replace(/\/$/, '');
+const base = (process.argv[2] || 'https://konstructum-kairos-one.vercel.app').replace(/\/$/, '');
 const email = process.env.KAIROS_EMAIL || 'onechief011@gmail.com';
 const password = process.env.KAIROS_PASSWORD;
 

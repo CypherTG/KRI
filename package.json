@@ -7,5 +7,9 @@
   },
   "dependencies": {
     "docx": "^9.7.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^26.6.6"
   }
 }

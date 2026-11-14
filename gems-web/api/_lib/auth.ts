@@ -11,7 +11,7 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
  * ADMIN_EMAILS env var (comma separated). These are always admins
  * regardless of the users.is_admin column.
  */
-export const DEFAULT_ADMIN_EMAILS = ['mbello@konstructum.com', 'onechief011@gmail.com'];
+export const DEFAULT_ADMIN_EMAILS = ['bellogbolahan247@gmail.com', 'onechief011@gmail.com'];
 
 export function adminEmails(): string[] {
   const configured = String(process.env.ADMIN_EMAILS || '')

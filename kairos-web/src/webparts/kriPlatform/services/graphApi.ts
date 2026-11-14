@@ -145,7 +145,7 @@ export interface ImportResult {
 
 export type CsvImportResult = ImportResult;
 
-const FOUNDING_ADMIN_EMAILS = ['mbello@konstructum.com', 'onechief011@gmail.com'];
+const FOUNDING_ADMIN_EMAILS = ['bellogbolahan247@gmail.com', 'onechief011@gmail.com'];
 
 // ─── Session identity ─────────────────────────────────────────────────────────
 

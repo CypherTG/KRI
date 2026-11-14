@@ -593,7 +593,7 @@ export default function GemsInteractionWorkspace({
                       onClick={() => {
                         const envUrl = (import.meta as any).env?.VITE_KAIROS_URL;
                         const isLocal = typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
-                        const kairosUrl = envUrl ? String(envUrl).replace(/\/$/, '') : isLocal ? `${window.location.protocol}//${window.location.hostname}:4321` : 'https://konstructum-kairos.vercel.app';
+                        const kairosUrl = envUrl ? String(envUrl).replace(/\/$/, '') : isLocal ? `${window.location.protocol}//${window.location.hostname}:4321` : 'https://konstructum-kairos-one.vercel.app';
                         window.open(`${kairosUrl}/add-contact`, '_blank', 'noopener,noreferrer');
 
                       }}

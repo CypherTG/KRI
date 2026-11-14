@@ -26,7 +26,7 @@ import { useAuth } from '../../../services/session';
 
 type Mode = 'signin' | 'register';
 
-const EXEMPT_EMAILS = ['mbello@konstructum.com', 'onechief011@gmail.com'];
+const EXEMPT_EMAILS = ['bellogbolahan247@gmail.com', 'onechief011@gmail.com'];
 
 const DOMAINS = [
   { domain: 'konstructum.com', label: 'Konstructum' },
