@@ -42,6 +42,19 @@ function formatDate(value: string): string {
   }
 }
 
+function formatShortDate(value: string): string {
+  if (!value) return '';
+  try {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleDateString('en-GB', {
+      weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+    });
+  } catch {
+    return value;
+  }
+}
+
 export default function GemsReviewWorkspace({ context }: Props) {
   const [interactions, setInteractions] = useState<GemsInteractionRecord[]>([]);
   const [users, setUsers] = useState<IKRIUser[]>([]);
@@ -112,12 +125,23 @@ export default function GemsReviewWorkspace({ context }: Props) {
 
   const handleAccept = async (interaction: GemsInteractionRecord) => {
     setActionLoading(`accept-${interaction.ID}`);
+    const employeeName = interaction.TargetUser || interaction.LoggedBy || 'Employee';
+    const fallbackEmail = resolveEmployeeEmail(employeeName);
     try {
-      await updateGemsInteractionClassification(context, interaction.ID, {
+      const updated = await updateGemsInteractionClassification(context, interaction.ID, {
         finalClassification: interaction.Category,
+        category: interaction.Category,
         reviewStatus: 'Validated',
       });
-      setSnackbar({ message: `Interaction accepted as ${interaction.Category}.`, severity: 'success' });
+      const pts = GEMS_CATEGORY_POINTS[interaction.Category] || interaction.Points || 1;
+      const notifiedAt = updated.recipientEmail || fallbackEmail;
+      const followUpPart = (interaction.FollowUpRequired || interaction.FollowUpDate)
+        ? ' Follow-up synced to Calendar & Actions.'
+        : '';
+      setSnackbar({
+        message: `Interaction accepted as ${interaction.Category} (${pts} pt${pts === 1 ? '' : 's'}).${followUpPart} Notification sent to ${notifiedAt}.`,
+        severity: 'success',
+      });
       await refresh();
     } catch (err: any) {
       setSnackbar({ message: err?.message || 'Failed to accept interaction', severity: 'error' });
@@ -131,27 +155,24 @@ export default function GemsReviewWorkspace({ context }: Props) {
       setSnackbar({ message: 'Select a different classification to reclassify.', severity: 'error' });
       return;
     }
-    const employeeName = interaction.LoggedBy || interaction.TargetUser || 'Employee';
+    const employeeName = interaction.TargetUser || interaction.LoggedBy || 'Employee';
     const employeeEmail = resolveEmployeeEmail(employeeName);
     setActionLoading(`reject-${interaction.ID}`);
     try {
-      await updateGemsInteractionClassification(context, interaction.ID, {
+      const updated = await updateGemsInteractionClassification(context, interaction.ID, {
         finalClassification: newCategory,
         reviewStatus: 'Rejected',
         category: newCategory,
       });
 
-      sendClassificationNotification(context, {
-        employeeEmail,
-        employeeName,
-        stakeholderName: interaction.ClientName || interaction.Title || 'Unknown',
-        previousCategory: interaction.Category,
-        newCategory,
-        reviewedBy: context.pageContext.user.displayName || 'Administrator',
-      }).catch(() => {});
+      const pts = GEMS_CATEGORY_POINTS[newCategory] || 1;
+      const notifiedAt = updated.recipientEmail || employeeEmail;
+      const followUpPart = (interaction.FollowUpRequired || interaction.FollowUpDate)
+        ? ' Follow-up synced to Calendar & Actions.'
+        : '';
 
       setSnackbar({
-        message: `Interaction reclassified from ${interaction.Category} to ${newCategory}. Employee (${employeeName}) notified at ${employeeEmail}.`,
+        message: `Interaction reclassified from ${interaction.Category} to ${newCategory} (${pts} pt${pts === 1 ? '' : 's'}).${followUpPart} Employee (${employeeName}) notified at ${notifiedAt}.`,
         severity: 'success',
       });
       await refresh();
@@ -253,7 +274,9 @@ export default function GemsReviewWorkspace({ context }: Props) {
 
                       <Typography sx={{ fontSize: '0.74rem', color: '#7B8FA6', mb: 2 }}>
                         Logged: {formatDate(interaction.LoggedAt)} · KRI stage: {interaction.KRIClassification || 'Unknown'}
-                        {interaction.FollowUpRequired ? ` · Follow-up: ${interaction.FollowUpDate || 'Required'}` : ''}
+                        {(interaction.FollowUpRequired || interaction.FollowUpDate)
+                          ? ` · Follow-up: ${interaction.FollowUpDate ? formatShortDate(interaction.FollowUpDate) : 'Required'}`
+                          : ''}
                       </Typography>
 
                       <Box sx={{

@@ -2,71 +2,84 @@ import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 
 /**
- * Transactional email.
- *
- * Verification codes are useless if they cannot be delivered, so a send failure
- * is treated as a hard failure: the caller deletes the half-created account and
- * returns 503. A pending account whose code can never arrive would otherwise lock
- * that address out of signing up again, with no explanation.
+ * Transactional & Notification Email Service (Resend + SMTP + Console).
  *
  * Transports, in priority order:
- *
- *  1. SMTP (Gmail App Password) — reaches any real address, no DNS to configure,
- *     roughly 500 messages a day. This is what is configured.
- *  2. Transactional provider (Resend / Postmark / SES) — better at volume, but
- *     needs a verified sending domain; until then the provider will only deliver
- *     to the account owner and 403 on everyone else, which makes the whole
- *     verification flow silently impossible. Not used.
- *  3. Console — development only. It REFUSES to run in production unless forced,
- *     because printing a live login code into a log is not something to do by
- *     accident.
- *
- * There is deliberately no silent fallback. If SMTP is configured but rejecting
- * the credentials, the send fails loudly.
+ *  1. Resend HTTP API (`RESEND_API_KEY`) — primary transactional email provider.
+ *  2. SMTP (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`) — Gmail / M365 / custom SMTP.
+ *  3. Console — development fallback.
  */
 
-export type TransportKind = 'smtp' | 'console';
+export type TransportKind = 'resend' | 'smtp' | 'console';
 
 export interface MailerConfig {
   transport: TransportKind;
   from: string;
-  /** True when the console transport is being used in production. */
   unsafeInProduction: boolean;
 }
 
+export interface EmailAttachment {
+  filename: string;
+  content: string | Buffer;
+  contentType?: string;
+}
+
+export interface BrandedEmailSection {
+  label: string;
+  value: string;
+}
+
+export interface BrandedEmailOptions {
+  platform?: 'GEMS' | 'KAIROS';
+  badgeText?: string;
+  badgeColor?: 'teal' | 'blue' | 'amber' | 'green' | 'purple';
+  headline: string;
+  greeting?: string;
+  lead: string;
+  rows?: BrandedEmailSection[];
+  notesTitle?: string;
+  notesBody?: string;
+  calloutTitle?: string;
+  calloutBody?: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  footerNote?: string;
+}
+
 function readEnv(): MailerConfig {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASSWORD;
+  const resendKey = process.env.RESEND_API_KEY?.trim();
+  if (resendKey) {
+    return {
+      transport: 'resend',
+      from:
+        process.env.RESEND_FROM?.trim()
+        || process.env.SMTP_FROM?.trim()
+        || 'KONSTRUCTUM <notifications@konstructum.com>',
+      unsafeInProduction: false,
+    };
+  }
+
+  const host = process.env.SMTP_HOST?.trim();
+  const user = process.env.SMTP_USER?.trim();
+  const pass = process.env.SMTP_PASSWORD?.trim();
 
   if (host && user && pass) {
     return {
       transport: 'smtp',
-      from: process.env.SMTP_FROM || `KAIROS <${user}>`,
+      from: process.env.SMTP_FROM?.trim() || `KONSTRUCTUM <${user}>`,
       unsafeInProduction: false,
     };
   }
 
   return {
     transport: 'console',
-    from: process.env.SMTP_FROM || 'KAIROS <no-reply@localhost>',
-    // Only tolerated outside production, and only when explicitly forced.
+    from: process.env.SMTP_FROM?.trim() || 'KONSTRUCTUM <no-reply@konstructum.com>',
     unsafeInProduction: process.env.ALLOW_CONSOLE_MAIL !== 'true',
   };
 }
 
-/**
- * Where replies should go, if anywhere.
- *
- * This is the honest way to brand mail from a mailbox you actually control: the
- * sending address stays real, the display name is the organisation, and replies
- * are routed to the business inbox. It is NOT a way to appear to send from an
- * address you do not own — konstructum.com's SPF is
- * `include:secureserver.net -all`, so a message claiming that From domain while
- * authenticated elsewhere has no valid authentication and is junked or rejected.
- */
 function replyTo(): string | undefined {
-  const value = process.env.SMTP_REPLY_TO?.trim();
+  const value = (process.env.RESEND_REPLY_TO || process.env.SMTP_REPLY_TO || 'executivesupport@konstructum.com').trim();
   return value || undefined;
 }
 
@@ -83,20 +96,16 @@ export class MailDeliveryError extends Error {
 
 let cached: { signature: string; transport: Transporter } | null = null;
 
-function getTransport(): Transporter {
+function getSmtpTransport(strictForAuth = false): Transporter {
   const config = readEnv();
 
   if (config.transport === 'console') {
-    if (config.unsafeInProduction && process.env.NODE_ENV === 'production') {
+    if (strictForAuth && config.unsafeInProduction && process.env.NODE_ENV === 'production') {
       throw new MailDeliveryError(
-        'SMTP is not configured, so verification emails cannot be sent. '
-        + 'Set SMTP_HOST, SMTP_USER and SMTP_PASSWORD. The console transport is refused '
-        + 'in production because it prints live login codes into the logs — set '
-        + 'ALLOW_CONSOLE_MAIL=true only if that is genuinely acceptable.',
+        'Email provider is not configured, so verification emails cannot be sent. '
+        + 'Set RESEND_API_KEY or SMTP_HOST, SMTP_USER and SMTP_PASSWORD.',
       );
     }
-    // A stable signature means a configuration change is picked up without a
-    // redeploy, and a nodemailer transporter is not rebuilt on every send.
     const signature = `console:${config.from}`;
     if (!cached || cached.signature !== signature) {
       cached = {
@@ -124,6 +133,352 @@ function getTransport(): Transporter {
   return cached.transport;
 }
 
+function escapeHtml(value: string): string {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Generates an official Konstructum branded HTML email matching the GEMS & KAIROS
+ * executive identity.
+ */
+export function renderKonstructumEmail(options: BrandedEmailOptions): string {
+  const platform = options.platform || 'KAIROS';
+  const isGems = platform === 'GEMS';
+  const headerGradient = isGems
+    ? 'linear-gradient(135deg, #091E2C 0%, #0C3B44 52%, #0F625D 100%)'
+    : 'linear-gradient(135deg, #0B1528 0%, #162B5B 55%, #1E40AF 100%)';
+  const accentColor = isGems ? '#0D9488' : '#2563EB';
+  const platformSubtitle = isGems
+    ? 'GEMS PLATFORM · GLOBAL ENGAGEMENT MEASUREMENT SYSTEM'
+    : 'KAIROS PLATFORM · RELATIONSHIP MANAGEMENT SYSTEM';
+  const logoUrl = isGems
+    ? 'https://konstructum-gems-six.vercel.app/favicon.png'
+    : 'https://konstructum-kairos-one.vercel.app/favicon.png';
+
+  const badgePalette: Record<string, { bg: string; text: string; border: string }> = {
+    teal: { bg: '#E6FFFA', text: '#0F766E', border: '#99F6E4' },
+    blue: { bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE' },
+    amber: { bg: '#FFFBEB', text: '#B45309', border: '#FDE68A' },
+    green: { bg: '#ECFDF5', text: '#047857', border: '#A7F3D0' },
+    purple: { bg: '#F5F3FF', text: '#6D28D9', border: '#DDD6FE' },
+  };
+  const badgeStyle = badgePalette[options.badgeColor || (isGems ? 'teal' : 'blue')] || badgePalette.blue;
+
+  const rowsHtml = (options.rows || [])
+    .filter((row) => row.value)
+    .map(
+      (row, idx) => `
+        <tr>
+          <td style="padding:10px 14px;border-bottom:1px solid #EEF2F7;color:#64748B;font-size:13px;font-weight:600;width:38%;background:${idx % 2 === 0 ? '#F8FAFC' : '#FFFFFF'};">
+            ${escapeHtml(row.label)}
+          </td>
+          <td style="padding:10px 14px;border-bottom:1px solid #EEF2F7;color:#0F172A;font-size:13px;font-weight:700;background:${idx % 2 === 0 ? '#F8FAFC' : '#FFFFFF'};">
+            ${escapeHtml(row.value)}
+          </td>
+        </tr>`,
+    )
+    .join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${escapeHtml(options.headline)}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#F1F5F9;font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;color:#0F172A;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#F1F5F9;padding:28px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;width:100%;background-color:#FFFFFF;border-radius:16px;overflow:hidden;border:1px solid #E2E8F0;box-shadow:0 10px 25px rgba(15,23,42,0.06);">
+          <!-- Header -->
+          <tr>
+            <td style="background:${headerGradient};padding:26px 32px;border-bottom:3px solid ${accentColor};">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td width="44" valign="middle">
+                    <img src="${logoUrl}" alt="Konstructum" width="36" height="36" style="display:block;border-radius:8px;background:#FFFFFF;padding:4px;" />
+                  </td>
+                  <td valign="middle" style="padding-left:12px;">
+                    <div style="font-size:18px;font-weight:800;letter-spacing:0.08em;color:#FFFFFF;line-height:1.2;">
+                      KONSTRUCTUM
+                    </div>
+                    <div style="font-size:10px;font-weight:700;letter-spacing:0.14em;color:#5EEAD4;margin-top:3px;">
+                      ${escapeHtml(platformSubtitle)}
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Main Body -->
+          <tr>
+            <td style="padding:32px;">
+              ${
+                options.badgeText
+                  ? `<div style="display:inline-block;padding:5px 12px;border-radius:999px;background:${badgeStyle.bg};color:${badgeStyle.text};border:1px solid ${badgeStyle.border};font-size:11px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:14px;">
+                      ${escapeHtml(options.badgeText)}
+                    </div>`
+                  : ''
+              }
+              <h1 style="margin:0 0 12px;font-size:22px;font-weight:800;color:#0F172A;line-height:1.3;">
+                ${escapeHtml(options.headline)}
+              </h1>
+              ${
+                options.greeting
+                  ? `<p style="margin:0 0 10px;font-size:15px;font-weight:600;color:#1E293B;">${escapeHtml(options.greeting)}</p>`
+                  : ''
+              }
+              <p style="margin:0 0 22px;font-size:14px;line-height:1.65;color:#475569;">
+                ${escapeHtml(options.lead)}
+              </p>
+
+              ${
+                rowsHtml
+                  ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #E2E8F0;border-radius:10px;overflow:hidden;margin-bottom:22px;">
+                      ${rowsHtml}
+                    </table>`
+                  : ''
+              }
+
+              ${
+                options.notesBody
+                  ? `<div style="background:#F8FAFC;border-left:4px solid ${accentColor};border-radius:8px;padding:14px 16px;margin-bottom:22px;">
+                      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#64748B;margin-bottom:6px;">
+                        ${escapeHtml(options.notesTitle || 'Engagement Notes & Justification')}
+                      </div>
+                      <div style="font-size:13px;line-height:1.6;color:#334155;white-space:pre-wrap;">${escapeHtml(options.notesBody)}</div>
+                    </div>`
+                  : ''
+              }
+
+              ${
+                options.calloutBody
+                  ? `<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:14px 16px;margin-bottom:22px;">
+                      <div style="font-size:12px;font-weight:800;color:#6D28D9;margin-bottom:4px;">
+                        📅 ${escapeHtml(options.calloutTitle || 'Calendar Follow-Up Reminder Attached')}
+                      </div>
+                      <div style="font-size:13px;line-height:1.55;color:#4C1D95;">
+                        ${escapeHtml(options.calloutBody)}
+                      </div>
+                    </div>`
+                  : ''
+              }
+
+              ${
+                options.ctaLabel && options.ctaUrl
+                  ? `<div style="margin-top:24px;margin-bottom:8px;">
+                      <a href="${escapeHtml(options.ctaUrl)}" style="display:inline-block;background:${accentColor};color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:700;padding:12px 24px;border-radius:8px;">
+                        ${escapeHtml(options.ctaLabel)} &rarr;
+                      </a>
+                    </div>`
+                  : ''
+              }
+
+              ${
+                options.footerNote
+                  ? `<p style="margin:20px 0 0;font-size:12px;color:#64748B;line-height:1.5;">
+                      ${escapeHtml(options.footerNote)}
+                    </p>`
+                  : ''
+              }
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background:#0F172A;padding:20px 32px;color:#94A3B8;font-size:12px;line-height:1.6;">
+              <div style="font-weight:700;color:#F8FAFC;margin-bottom:4px;">
+                KONSTRUCTUM · Business Development &amp; Government Relations
+              </div>
+              <div>40 Adetokunbo Ademola Street, Victoria Island, Lagos, Nigeria</div>
+              <div style="margin-top:4px;">
+                <a href="https://www.konstructum.com" style="color:#5EEAD4;text-decoration:none;">www.konstructum.com</a>
+                &nbsp;·&nbsp;
+                <a href="mailto:executivesupport@konstructum.com" style="color:#5EEAD4;text-decoration:none;">executivesupport@konstructum.com</a>
+                &nbsp;·&nbsp;
+                <span>+234 912 555 5551</span>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+/**
+ * Generates an RFC 5545 iCalendar (.ics) attachment for follow-ups and meetings.
+ */
+export function buildCalendarInviteIcs(params: {
+  uid: string;
+  dateStr: string;
+  summary: string;
+  description: string;
+  location?: string;
+  organizerEmail?: string;
+  attendeeEmail?: string;
+}): EmailAttachment | null {
+  const cleanDate = String(params.dateStr || '').trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) return null;
+
+  const compactDate = cleanDate.replace(/-/g, '');
+  const nowStamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const escapeIcs = (text: string) =>
+    String(text || '')
+      .replace(/\\/g, '\\\\')
+      .replace(/;/g, '\\;')
+      .replace(/,/g, '\\,')
+      .replace(/\r?\n/g, '\\n');
+
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Konstructum//GEMS & KAIROS Platform//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:${params.uid}@konstructum.com`,
+    `DTSTAMP:${nowStamp}`,
+    `DTSTART;VALUE=DATE:${compactDate}`,
+    `DTEND;VALUE=DATE:${compactDate}`,
+    `SUMMARY:${escapeIcs(params.summary)}`,
+    `DESCRIPTION:${escapeIcs(params.description)}`,
+    params.location ? `LOCATION:${escapeIcs(params.location)}` : 'LOCATION:Konstructum Platform',
+    'STATUS:CONFIRMED',
+    'BEGIN:VALARM',
+    'TRIGGER:-PT9H',
+    'ACTION:DISPLAY',
+    `DESCRIPTION:${escapeIcs(params.summary)}`,
+    'END:VALARM',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ];
+
+  return {
+    filename: `konstructum-followup-${cleanDate}.ics`,
+    content: lines.join('\r\n'),
+    contentType: 'text/calendar; charset=utf-8; method=PUBLISH',
+  };
+}
+
+export interface SendMailPayload {
+  to: string | string[];
+  subject: string;
+  text: string;
+  html: string;
+  attachments?: EmailAttachment[];
+  strict?: boolean;
+}
+
+/**
+ * Unified mail sender supporting Resend HTTP API, Nodemailer SMTP, and Console.
+ */
+export async function sendPlatformEmail(payload: SendMailPayload): Promise<{ sent: boolean; transport: TransportKind }> {
+  const config = readEnv();
+  const recipients = (Array.isArray(payload.to) ? payload.to : [payload.to])
+    .map((addr) => String(addr || '').trim())
+    .filter((addr) => addr.includes('@'));
+
+  if (!recipients.length) {
+    return { sent: false, transport: config.transport };
+  }
+
+  if (config.transport === 'resend') {
+    const apiKey = process.env.RESEND_API_KEY!.trim();
+    const body: Record<string, unknown> = {
+      from: config.from,
+      to: recipients,
+      subject: payload.subject,
+      text: payload.text,
+      html: payload.html,
+    };
+    const reply = replyTo();
+    if (reply) body.reply_to = reply;
+    if (payload.attachments?.length) {
+      body.attachments = payload.attachments.map((att) => ({
+        filename: att.filename,
+        content: Buffer.isBuffer(att.content)
+          ? att.content.toString('base64')
+          : Buffer.from(String(att.content), 'utf-8').toString('base64'),
+        content_type: att.contentType || 'text/calendar',
+      }));
+    }
+
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.error('[mail] Resend API delivery failed', { status: res.status, errText, to: recipients });
+      if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
+        console.warn('[mail] Falling back from Resend to SMTP transport');
+      } else if (payload.strict) {
+        throw new MailDeliveryError('The email could not be sent via Resend. Please try again shortly.');
+      } else {
+        return { sent: false, transport: 'resend' };
+      }
+    } else {
+      return { sent: true, transport: 'resend' };
+    }
+  }
+
+  if (config.transport === 'console') {
+    const transport = getSmtpTransport(Boolean(payload.strict));
+    await transport.sendMail({
+      from: config.from,
+      to: recipients.join(', '),
+      subject: payload.subject,
+      text: payload.text,
+      html: payload.html,
+    });
+    console.warn(`\n[mail:console] ${payload.subject} -> ${recipients.join(', ')}\n`);
+    return { sent: true, transport: 'console' };
+  }
+
+  // SMTP transport (primary or fallback)
+  try {
+    const transport = getSmtpTransport(Boolean(payload.strict));
+    const reply = replyTo() ? { replyTo: replyTo() } : {};
+    await transport.sendMail({
+      from: process.env.SMTP_FROM?.trim() || `KONSTRUCTUM <${process.env.SMTP_USER}>`,
+      to: recipients.join(', '),
+      subject: payload.subject,
+      text: payload.text,
+      html: payload.html,
+      attachments: payload.attachments?.map((att) => ({
+        filename: att.filename,
+        content: att.content,
+        contentType: att.contentType,
+      })),
+      ...reply,
+    });
+    return { sent: true, transport: 'smtp' };
+  } catch (error) {
+    console.error('[mail] SMTP delivery failed', {
+      to: recipients,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    if (payload.strict) {
+      throw new MailDeliveryError('The verification email could not be sent. Please try again shortly.');
+    }
+    return { sent: false, transport: 'smtp' };
+  }
+}
+
 export interface VerificationEmail {
   to: string;
   code: string;
@@ -131,15 +486,12 @@ export interface VerificationEmail {
 }
 
 /**
- * Sends a verification code. Throws MailDeliveryError on failure — callers must
- * not treat a failed send as success.
+ * Sends a 6-digit verification code using the branded Konstructum template.
  */
 export async function sendVerificationCode(message: VerificationEmail): Promise<void> {
-  const config = readEnv();
-  const transport = getTransport();
   const { appName, to, code } = message;
-
-  const subject = `${appName} — your verification code`;
+  const platform = appName.toUpperCase().includes('GEMS') ? 'GEMS' : 'KAIROS';
+  const subject = `${appName} — Your Verification Code (${code})`;
   const text = [
     `Your ${appName} verification code is:`,
     '',
@@ -148,53 +500,39 @@ export async function sendVerificationCode(message: VerificationEmail): Promise<
     'Enter this on the sign-in screen to activate your account.',
     'The code is valid for 5 minutes and can be used once.',
     '',
-    'If you did not request this, you can ignore this email — no account is',
-    'activated until someone enters this code.',
+    'If you did not request this, you can ignore this email.',
   ].join('\n');
 
-  const html = `
-    <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px">
-      <h2 style="margin:0 0 4px">Verify your ${appName} account</h2>
-      <p style="color:#4b5563;margin:0 0 20px">Enter this code to finish setting up your account.</p>
-      <div style="font-size:26px;letter-spacing:6px;font-weight:700;background:#f5f6fa;border:1px solid #e5e7eb;border-radius:8px;padding:16px 20px;text-align:center">${code}</div>
-      <p style="color:#6b7280;font-size:13px;margin:20px 0 0">The code is valid for 5 minutes and can be used once.</p>
-      <p style="color:#6b7280;font-size:13px;margin:6px 0 0">If you did not request this, you can ignore this email — no account is activated until someone enters this code.</p>
-    </div>
-  `;
+  const html = renderKonstructumEmail({
+    platform,
+    badgeText: 'Account Security',
+    badgeColor: platform === 'GEMS' ? 'teal' : 'blue',
+    headline: `Verify your ${appName} account`,
+    lead: 'Enter the 6-digit verification code below on the sign-in screen to complete your authentication.',
+    rows: [
+      { label: 'Verification Code', value: code },
+      { label: 'Account Email', value: to },
+      { label: 'Validity', value: '5 minutes (single use)' },
+    ],
+    footerNote:
+      'If you did not request this verification code, you can safely ignore this email — no account is activated until this code is entered.',
+  });
 
-  if (config.transport === 'console') {
-    const result = await transport.sendMail({
-      from: config.from,
-      to,
-      subject,
-      text,
-      html,
-    });
-    // jsonTransport does not deliver; the code is surfaced for local development.
-    console.warn(`\n[mail:console] verification code for ${to}\n    ${code}\n`);
-    void result;
-    return;
-  }
-
-  // Named `reply` rather than `to`, which is the recipient.
-  const reply = replyTo() ? { replyTo: replyTo() } : {};
-
-  try {
-    await transport.sendMail({ from: config.from, to, subject, text, html, ...reply });
-  } catch (error) {
-    // Wrapped so the caller can distinguish a delivery failure from any other
-    // error, and so the underlying reason is logged but not leaked to the client.
-    console.error('[mail] SMTP delivery failed', {
-      to,
-      message: error instanceof Error ? error.message : String(error),
-    });
-    throw new MailDeliveryError('The verification email could not be sent. Please try again shortly.');
-  }
+  await sendPlatformEmail({
+    to,
+    subject,
+    text,
+    html,
+    strict: true,
+  });
 }
 
 /** Verifies the configured transport can actually send, for a deployment check. */
 export async function verifyMailer(): Promise<{ ok: boolean; transport: string; detail: string }> {
   const config = readEnv();
+  if (config.transport === 'resend') {
+    return { ok: true, transport: 'resend', detail: `Resend API configured (${config.from})` };
+  }
   if (config.transport === 'console') {
     if (config.unsafeInProduction && process.env.NODE_ENV === 'production') {
       return { ok: false, transport: 'console', detail: 'console transport refused in production' };
@@ -203,7 +541,7 @@ export async function verifyMailer(): Promise<{ ok: boolean; transport: string; 
   }
 
   try {
-    const transport = getTransport() as Transporter & {
+    const transport = getSmtpTransport() as Transporter & {
       verify: () => Promise<unknown>;
     };
     await transport.verify();

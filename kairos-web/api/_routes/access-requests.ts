@@ -3,8 +3,8 @@ import { methodGuard, readJson, sendJson, optionalString, HttpError } from '../_
 import { raw, rawOne } from '../_lib/db.js';
 import { canSeeEverything, assertClientReviewable } from '../_lib/scope.js';
 import { mapAccessRequest } from '../_lib/mappers.js';
+import { renderKonstructumEmail, sendPlatformEmail } from '../_lib/mailer.js';
 
-const SELECT_ONE = `SELECT * FROM contact_access_requests WHERE id = $1`;
 const ACCESS_TTL_DAYS = 7;
 
 /**
@@ -47,6 +47,37 @@ export default methodGuard(['GET', 'POST'], async (req, res) => {
         WHERE id = $1 RETURNING *`,
       [requestId, status, user.displayName],
     );
+
+    if (updated?.requester_email) {
+      const isApproved = status === 'Approved';
+      const html = renderKonstructumEmail({
+        platform: 'KAIROS',
+        badgeText: `Access ${status}`,
+        badgeColor: isApproved ? 'green' : 'amber',
+        headline: `Contact Access Request ${status}: ${updated.client_name}`,
+        greeting: `Hello ${updated.requester_name || 'Colleague'},`,
+        lead: isApproved
+          ? `Your request to view contact details for ${updated.client_name} (${updated.company_name || 'Organisation'}) has been approved by ${user.displayName}. You now have access for ${ACCESS_TTL_DAYS} days.`
+          : `Your request to view contact details for ${updated.client_name} (${updated.company_name || 'Organisation'}) was declined by ${user.displayName}.`,
+        rows: [
+          { label: 'Contact Name', value: String(updated.client_name || '') },
+          { label: 'Company', value: String(updated.company_name || '') },
+          { label: 'Decision', value: status },
+          { label: 'Reviewed By', value: user.displayName },
+        ],
+        ctaLabel: isApproved ? 'Open Contact in KAIROS' : 'Open KAIROS Dashboard',
+        ctaUrl: isApproved
+          ? `https://konstructum-kairos-one.vercel.app/clients/${updated.client_id}`
+          : 'https://konstructum-kairos-one.vercel.app/dashboard',
+      });
+      await sendPlatformEmail({
+        to: String(updated.requester_email),
+        subject: `KAIROS: Contact Access Request ${status} — ${updated.client_name}`,
+        text: `Your request to access ${updated.client_name} (${updated.company_name}) was ${status.toLowerCase()} by ${user.displayName}.`,
+        html,
+      }).catch(() => {});
+    }
+
     return sendJson(res, 200, { request: mapAccessRequest(updated) });
   }
 
@@ -79,6 +110,8 @@ export default methodGuard(['GET', 'POST'], async (req, res) => {
   if (existing) return sendJson(res, 200, { request: mapAccessRequest(existing) });
 
   const ownerLabel = String(client.primary_contact_name || '');
+  const contactName = `${client.first_name || ''} ${client.last_name || ''}`.trim() || client.company_name || 'Contact';
+  const reasonText = optionalString(body.reason, 2000) ?? '';
   const created = await rawOne<any>(
     `INSERT INTO contact_access_requests (
         client_id, client_name, company_name, requester_id, requester_key, requester_name,
@@ -87,7 +120,7 @@ export default methodGuard(['GET', 'POST'], async (req, res) => {
      RETURNING *`,
     [
       clientId,
-      `${client.first_name || ''} ${client.last_name || ''}`.trim() || client.company_name || 'Contact',
+      contactName,
       String(client.company_name || ''),
       user.id,
       user.email.toLowerCase(),
@@ -95,10 +128,46 @@ export default methodGuard(['GET', 'POST'], async (req, res) => {
       user.email,
       String(client.primary_contact_id || '').toLowerCase(),
       ownerLabel,
-      optionalString(body.reason, 2000) ?? '',
+      reasonText,
       ACCESS_TTL_DAYS,
     ],
   );
+
+  // Notify the contact owner (and fallback to admins if owner email is not directly resolved)
+  const ownerRow = await rawOne<any>(
+    `SELECT email, display_name FROM users
+      WHERE is_active = TRUE
+        AND (lower(email) = lower($1) OR lower(display_name) = lower($2))
+      LIMIT 1`,
+    [String(client.primary_contact_id || ''), ownerLabel],
+  ).catch(() => null);
+
+  if (ownerRow?.email) {
+    const html = renderKonstructumEmail({
+      platform: 'KAIROS',
+      badgeText: 'Access Request Pending',
+      badgeColor: 'blue',
+      headline: `Colleague Contact Access Request: ${contactName}`,
+      greeting: `Hello ${ownerRow.display_name || ownerLabel || 'Team Member'},`,
+      lead: `${user.displayName} (${user.email}) has requested ${ACCESS_TTL_DAYS}-day read access to your contact ${contactName} at ${client.company_name || 'Organisation'}.`,
+      rows: [
+        { label: 'Contact Requested', value: contactName },
+        { label: 'Organisation', value: String(client.company_name || '') },
+        { label: 'Requested By', value: `${user.displayName} (${user.email})` },
+        { label: 'Access Duration', value: `${ACCESS_TTL_DAYS} days upon approval` },
+      ],
+      notesTitle: 'Reason for Request',
+      notesBody: reasonText || 'Standard collaboration request.',
+      ctaLabel: 'Review & Approve in KAIROS',
+      ctaUrl: `https://konstructum-kairos-one.vercel.app/clients/${clientId}`,
+    });
+    await sendPlatformEmail({
+      to: String(ownerRow.email),
+      subject: `KAIROS: ${user.displayName} requested access to ${contactName}`,
+      text: `${user.displayName} requested access to your contact ${contactName} (${client.company_name}).`,
+      html,
+    }).catch(() => {});
+  }
 
   return sendJson(res, 201, { request: mapAccessRequest(created) });
 });

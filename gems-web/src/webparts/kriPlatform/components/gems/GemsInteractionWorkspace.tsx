@@ -89,10 +89,74 @@ const AGENCY_TARGETS: Record<BusinessArm, Array<{ agency: string; target: number
 };
 
 const ROADMAP = [
-  { period: 'May 2026', status: 'Active', title: 'Stakeholder Identification', detail: 'Stakeholder list available, owners assigned per contact, and first-wave engagements started.' },
-  { period: 'June 2026', status: 'Planned', title: 'Pearl Advocates', detail: '3 advocates per agency, +10 new introductions, 100 points achieved, and +20 points per agency.' },
-  { period: 'Q3 2026', status: 'Planned', title: 'Crown Jewel Access', detail: 'Confirmed access in 3/5 agencies, 3 new partnerships, and 100-point RII target across agencies.' },
-  { period: 'Q4 2026', status: 'Planned', title: 'Full Conversion', detail: '10 more people in Intimacy, strategic relationships in priority agencies, full targets achieved, and annual review.' },
+  {
+    step: '01',
+    phase: 'Phase 1 · Foundation',
+    period: 'May 2026',
+    status: 'Active',
+    pathway: 'KRI: Knowledge → Ruby (45% Influence)',
+    accent: '#0F7B6C',
+    bgTint: '#F0FDF9',
+    borderTint: '#99F6E4',
+    title: 'Stakeholder Identification',
+    summary: 'Build the government stakeholder baseline in KAIROS and launch initial agency outreach.',
+    milestones: [
+      'Complete verified agency stakeholder registry in KAIROS',
+      'Assign a dedicated KCC relationship owner per contact',
+      'Initiate first-wave introductory meetings across agencies',
+    ],
+  },
+  {
+    step: '02',
+    phase: 'Phase 2 · Expansion',
+    period: 'June 2026',
+    status: 'Planned',
+    pathway: 'KRI: Rapport → Coral & Pearl (60%–75% Influence)',
+    accent: '#2563EB',
+    bgTint: '#F8FAFC',
+    borderTint: '#DBEAFE',
+    title: 'Pearl Advocates',
+    summary: 'Convert initial contacts into active Connectors (Coral, 3 pts) and Recommenders (Pearl, 5 pts).',
+    milestones: [
+      'Secure at least 3 Pearl advocates per monitored agency',
+      'Generate +10 warm stakeholder introductions via Corals',
+      'Achieve 100 monthly points (+20 points per agency)',
+    ],
+  },
+  {
+    step: '03',
+    phase: 'Phase 3 · Decision Access',
+    period: 'Q3 2026',
+    status: 'Planned',
+    pathway: 'KRI: Rapport/Intimacy → Crown Jewel (90% Influence)',
+    accent: '#7C3AED',
+    bgTint: '#F8FAFC',
+    borderTint: '#EDE9FE',
+    title: 'Crown Jewel Access',
+    summary: 'Reach final decision-makers and permit/contract approvers across priority regulators.',
+    milestones: [
+      'Confirm direct Crown Jewel access in at least 3 of 5 agencies',
+      'Establish 3 new strategic institutional partnerships',
+      'Sustain 100-point Relationship Influence Index (RII) target',
+    ],
+  },
+  {
+    step: '04',
+    phase: 'Phase 4 · Institutionalisation',
+    period: 'Q4 2026',
+    status: 'Planned',
+    pathway: 'KRI: Intimacy → Full Target Conversion',
+    accent: '#D97706',
+    bgTint: '#F8FAFC',
+    borderTint: '#FEF3C7',
+    title: 'Full Conversion',
+    summary: 'Lock in long-term strategic relationships, close priority approvals, and complete annual review.',
+    milestones: [
+      'Advance 10+ key stakeholders into the Intimacy (I) stage',
+      'Achieve 100% of annual entity & agency point allocations',
+      'Complete executive BAM annual performance & bonus review',
+    ],
+  },
 ];
 
 type CompanyScope = {
@@ -906,22 +970,148 @@ export default function GemsInteractionWorkspace({
         emptyLabel="No open follow-ups are currently logged for this workspace."
       />
 
-      <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #E8ECF0' }}>
-        <Typography sx={{ fontWeight: 900, color: '#1A1D23', mb: 1 }}>
-          Forward-Looking Roadmap
-        </Typography>
-        <Typography sx={{ color: '#6B7280', mb: 2, fontSize: '0.86rem' }}>
-          Quarterly progression from stakeholder identification to Crown Jewel access and full conversion.
-        </Typography>
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, minmax(0, 1fr))' }, gap: 1.5 }}>
-          {ROADMAP.map((item) => (
-            <Box key={item.period} sx={{ p: 1.75, borderRadius: 2.5, background: '#FAFBFC', border: '1px solid #EEF2F7' }}>
-              <Chip label={item.status} size="small" sx={{ mb: 1, fontWeight: 800, background: item.status === 'Active' ? '#E8F5F2' : '#EEF2F7', color: item.status === 'Active' ? '#0F7B6C' : '#6B7280' }} />
-              <Typography sx={{ fontSize: '0.75rem', fontWeight: 800, color: '#0F7B6C' }}>{item.period}</Typography>
-              <Typography sx={{ fontWeight: 900, color: '#1A1D23', mt: 0.35 }}>{item.title}</Typography>
-              <Typography sx={{ color: '#6B7280', fontSize: '0.78rem', lineHeight: 1.6, mt: 0.75 }}>{item.detail}</Typography>
-            </Box>
-          ))}
+      <Paper sx={{ p: { xs: 2.5, md: 3.5 }, borderRadius: 3, border: '1px solid #E2E8F0', background: '#FFFFFF' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2, mb: 2.5 }}>
+          <Box>
+            <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, color: '#0F7B6C', letterSpacing: '0.1em', textTransform: 'uppercase', mb: 0.4 }}>
+              Executive Reference · 2026 Government Relations Strategy
+            </Typography>
+            <Typography sx={{ fontWeight: 900, fontSize: '1.15rem', color: '#0F172A' }}>
+              Forward-Looking Roadmap
+            </Typography>
+            <Typography sx={{ color: '#475569', mt: 0.5, fontSize: '0.88rem', maxWidth: 720, lineHeight: 1.55 }}>
+              Step-by-step quarterly progression showing how KCC &amp; entity teams move agency contacts from initial identification (<strong>Knowledge / Ruby</strong>) to decision-maker authority (<strong>Intimacy / Crown Jewel</strong>).
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+            <Chip label="1. Ruby (Informator)" size="small" sx={{ fontWeight: 700, fontSize: '0.72rem', background: '#F1F5F9', color: '#334155' }} />
+            <Typography sx={{ color: '#94A3B8', fontWeight: 800, fontSize: '0.8rem' }}>&rarr;</Typography>
+            <Chip label="2. Coral (Connector)" size="small" sx={{ fontWeight: 700, fontSize: '0.72rem', background: '#EFF6FF', color: '#1D4ED8' }} />
+            <Typography sx={{ color: '#94A3B8', fontWeight: 800, fontSize: '0.8rem' }}>&rarr;</Typography>
+            <Chip label="3. Pearl (Recommender)" size="small" sx={{ fontWeight: 700, fontSize: '0.72rem', background: '#F0FDF4', color: '#047857' }} />
+            <Typography sx={{ color: '#94A3B8', fontWeight: 800, fontSize: '0.8rem' }}>&rarr;</Typography>
+            <Chip label="4. Crown Jewel (Approver)" size="small" sx={{ fontWeight: 700, fontSize: '0.72rem', background: '#FEF3C7', color: '#B45309' }} />
+          </Stack>
+        </Box>
+
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(4, minmax(0, 1fr))' }, gap: 2 }}>
+          {ROADMAP.map((item) => {
+            const isActive = item.status === 'Active';
+            return (
+              <Box
+                key={item.period}
+                sx={{
+                  p: 2.25,
+                  borderRadius: 3,
+                  background: item.bgTint,
+                  border: `1.5px solid ${isActive ? item.accent : '#E2E8F0'}`,
+                  borderTop: `4px solid ${item.accent}`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  boxShadow: isActive ? '0 8px 20px rgba(15, 123, 108, 0.08)' : 'none',
+                }}
+              >
+                <Box>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.25 }}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Box
+                        sx={{
+                          width: 26,
+                          height: 26,
+                          borderRadius: '50%',
+                          background: item.accent,
+                          color: '#FFFFFF',
+                          fontSize: '0.74rem',
+                          fontWeight: 900,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {item.step}
+                      </Box>
+                      <Typography sx={{ fontSize: '0.78rem', fontWeight: 800, color: item.accent, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        {item.period}
+                      </Typography>
+                    </Stack>
+                    <Chip
+                      label={isActive ? 'Current Focus' : item.status}
+                      size="small"
+                      sx={{
+                        height: 22,
+                        fontSize: '0.68rem',
+                        fontWeight: 800,
+                        background: isActive ? '#0F7B6C' : '#E2E8F0',
+                        color: isActive ? '#FFFFFF' : '#475569',
+                      }}
+                    />
+                  </Stack>
+
+                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    {item.phase}
+                  </Typography>
+                  <Typography sx={{ fontWeight: 900, fontSize: '1.02rem', color: '#0F172A', mt: 0.25 }}>
+                    {item.title}
+                  </Typography>
+
+                  <Box
+                    sx={{
+                      mt: 1,
+                      mb: 1.25,
+                      px: 1.1,
+                      py: 0.45,
+                      borderRadius: 1.5,
+                      background: '#FFFFFF',
+                      border: `1px solid ${item.borderTint}`,
+                      fontSize: '0.71rem',
+                      fontWeight: 700,
+                      color: item.accent,
+                    }}
+                  >
+                    {item.pathway}
+                  </Box>
+
+                  <Typography sx={{ color: '#334155', fontSize: '0.8rem', lineHeight: 1.55, mb: 1.5 }}>
+                    {item.summary}
+                  </Typography>
+                </Box>
+
+                <Box sx={{ pt: 1.25, borderTop: '1px dashed #CBD5E1' }}>
+                  <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.75 }}>
+                    Target Deliverables
+                  </Typography>
+                  <Stack spacing={0.65}>
+                    {item.milestones.map((milestone) => (
+                      <Stack key={milestone} direction="row" spacing={0.85} alignItems="flex-start">
+                        <Box
+                          sx={{
+                            mt: '4px',
+                            width: 14,
+                            height: 14,
+                            borderRadius: '50%',
+                            background: `${item.accent}18`,
+                            color: item.accent,
+                            fontSize: '0.62rem',
+                            fontWeight: 900,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          ✓
+                        </Box>
+                        <Typography sx={{ fontSize: '0.76rem', color: '#1E293B', lineHeight: 1.45, fontWeight: 500 }}>
+                          {milestone}
+                        </Typography>
+                      </Stack>
+                    ))}
+                  </Stack>
+                </Box>
+              </Box>
+            );
+          })}
         </Box>
       </Paper>
     </Stack>

@@ -1,9 +1,119 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireSession, requireAdmin } from '../_lib/auth.js';
-import { methodGuard, readJson, sendJson, HttpError, optionalString, toDateOnly, toTextArray } from '../_lib/http.js';
+import { methodGuard, readJson, sendJson, HttpError, optionalString, toDateOnly } from '../_lib/http.js';
 import { raw, rawOne } from '../_lib/db.js';
 import { gemsScopeSql, resolveAgencyOrThrow, normalizeGemsAgency } from '../_lib/gemsScope.js';
 import { mapGemsInteraction, CATEGORY_POINTS } from '../_lib/gemsMappers.js';
+import {
+  sendGemsReviewNotificationEmail,
+  sendPlatformEmail,
+  renderKonstructumEmail,
+} from '../_lib/mailer.js';
+
+/**
+ * Ensures a follow-up action item exists in `gems_actions` whenever an interaction
+ * has `follow_up_required = true` or a `follow_up_date`. Idempotent per interaction id.
+ */
+async function ensureFollowUpActionForInteraction(
+  interactionRow: any,
+  actorName: string,
+  actorId: string | number,
+): Promise<boolean> {
+  const hasFollowUp = Boolean(interactionRow.follow_up_required || interactionRow.follow_up_date);
+  if (!hasFollowUp) return false;
+
+  const existingAction = await rawOne<any>(
+    `SELECT id FROM gems_actions WHERE source = 'Interaction' AND source_id = $1 LIMIT 1`,
+    [String(interactionRow.id)],
+  );
+  if (existingAction) {
+    if (interactionRow.follow_up_date) {
+      await raw(
+        `UPDATE gems_actions SET due_date = COALESCE(due_date, $2) WHERE id = $1`,
+        [existingAction.id, interactionRow.follow_up_date],
+      );
+    }
+    return false;
+  }
+
+  const dueStr = interactionRow.follow_up_date
+    ? new Date(interactionRow.follow_up_date).toISOString().slice(0, 10)
+    : null;
+  const daysUntilDue = dueStr
+    ? Math.round((new Date(dueStr).getTime() - Date.now()) / 86400000)
+    : 14;
+  const priority = daysUntilDue <= 7 ? 'High' : 'Medium';
+  const assignedTo = interactionRow.target_user || interactionRow.logged_by || actorName;
+  const assignedToId = String(interactionRow.target_user_id || interactionRow.logged_by_id || actorId || '');
+  const stakeholderLabel = `${interactionRow.client_name || 'Stakeholder'} (${interactionRow.agency || interactionRow.company_name || 'Agency'})`;
+  const finalClass = interactionRow.final_classification || interactionRow.category || 'Ruby';
+  const description = `Follow-up on ${interactionRow.interaction_type || 'Interaction'} (${finalClass}): ${interactionRow.notes || interactionRow.justification || 'Scheduled follow-up'}`.slice(0, 4000);
+
+  await rawOne<any>(
+    `INSERT INTO gems_actions (
+       entity_type, entity_id, entity_name, action_type, priority, status,
+       due_date, assigned_to, assigned_to_id, description, source, source_id, created_by, created_by_id
+     ) VALUES (
+       'Stakeholder', $1, $2, 'FollowUp', $3, 'Open',
+       $4, $5, $6, $7, 'Interaction', $8, $9, $10
+     ) RETURNING id`,
+    [
+      String(interactionRow.client_id || ''),
+      stakeholderLabel,
+      priority,
+      dueStr,
+      assignedTo,
+      assignedToId,
+      description,
+      String(interactionRow.id),
+      actorName,
+      String(actorId || ''),
+    ],
+  );
+
+  return true;
+}
+
+/**
+ * Resolves the email address for the employee credited or who logged the interaction.
+ */
+async function resolveInteractionEmployeeEmail(interactionRow: any, fallbackEmail: string): Promise<{ email: string; name: string }> {
+  const candidateIds = [interactionRow.target_user_id, interactionRow.logged_by_id]
+    .map((v) => Number(v))
+    .filter((v) => Number.isFinite(v) && v > 0);
+
+  if (candidateIds.length > 0) {
+    const byId = await rawOne<any>(
+      `SELECT email, display_name FROM users WHERE id = ANY($1::int[]) AND is_active = TRUE LIMIT 1`,
+      [candidateIds],
+    );
+    if (byId?.email) {
+      return { email: String(byId.email), name: String(byId.display_name || interactionRow.target_user || interactionRow.logged_by || '') };
+    }
+  }
+
+  const candidateNames = [interactionRow.target_user, interactionRow.logged_by]
+    .map((v) => String(v || '').trim())
+    .filter(Boolean);
+
+  for (const name of candidateNames) {
+    const byName = await rawOne<any>(
+      `SELECT email, display_name FROM users
+        WHERE is_active = TRUE
+          AND (lower(display_name) = lower($1) OR lower(email) = lower($1) OR lower(display_name) LIKE '%' || lower($1) || '%')
+        LIMIT 1`,
+      [name],
+    );
+    if (byName?.email) {
+      return { email: String(byName.email), name: String(byName.display_name || name) };
+    }
+  }
+
+  return {
+    email: fallbackEmail,
+    name: String(interactionRow.target_user || interactionRow.logged_by || 'Team Member'),
+  };
+}
 
 /**
  * Interactions — the core GEMS log.
@@ -12,12 +122,8 @@ import { mapGemsInteraction, CATEGORY_POINTS } from '../_lib/gemsMappers.js';
  *   GET    /api/gems/interactions?clientId=…     — one stakeholder
  *   GET    /api/gems/interactions?companyKey=…   — one agency
  *   POST   /api/gems/interactions                — log one
- *   PATCH  /api/gems/interactions?id=…           — reclassify (admin)
+ *   PATCH  /api/gems/interactions?id=…           — accept / reclassify (admin)
  *   DELETE /api/gems/interactions?id=…           — remove (admin)
- *
- * A client_id is accepted only if the contact's company resolves to a monitored
- * agency, so an interaction cannot be attached to an out-of-scope contact by
- * passing its id directly.
  */
 export default methodGuard(['GET', 'POST', 'PATCH', 'DELETE'], async (req, res) => {
   const user = await requireSession(req);
@@ -51,8 +157,6 @@ export default methodGuard(['GET', 'POST', 'PATCH', 'DELETE'], async (req, res) 
       params,
     );
 
-    // When listing everything, the join above guarantees scope; drop any row
-    // whose contact has since been removed or renamed out of scope.
     const visible = clientId || companyKey
       ? rows
       : rows.filter((row) => normalizeGemsAgency(row.company_name || row.company_key || ''));
@@ -65,9 +169,6 @@ export default methodGuard(['GET', 'POST', 'PATCH', 'DELETE'], async (req, res) 
     const clientId = String(body.clientId ?? body.ClientID ?? '').trim();
     if (!clientId) throw new HttpError(400, 'A stakeholder is required.');
 
-    // Validate the target is actually in GEMS scope before writing anything.
-    // The params array is shared with the predicate builder so the placeholders
-    // it emits are the ones actually bound.
     const clientParams: any[] = [clientId];
     const clientScope = gemsScopeSql('c', clientParams);
     const client = await rawOne<any>(
@@ -148,6 +249,62 @@ export default methodGuard(['GET', 'POST', 'PATCH', 'DELETE'], async (req, res) 
       [row.id, category, user.displayName, user.email, `Logged ${interactionType} with ${agency}`],
     );
 
+    // Auto-create a linked Follow-Up Action if follow-up is required or has a date
+    await ensureFollowUpActionForInteraction(row, user.displayName, user.id).catch((err) => {
+      console.error('[gems] Failed to auto-create follow-up action on POST', err);
+    });
+
+    // If Executive Management Involvement was requested, create an Approval action and notify Admins
+    if (row.executive_involvement_requested) {
+      await rawOne(
+        `INSERT INTO gems_actions (
+           entity_type, entity_id, entity_name, action_type, priority, status,
+           due_date, assigned_to, description, source, source_id, created_by, created_by_id
+         ) VALUES (
+           'Stakeholder', $1, $2, 'Approval', 'High', 'Open',
+           CURRENT_DATE + INTERVAL '3 days', 'Executive Management', $3, 'Interaction', $4, $5, $6
+         ) RETURNING id`,
+        [
+          String(row.client_id),
+          `${row.client_name} (${agency})`,
+          `Executive management involvement requested by ${user.displayName} (${row.executive_monthly_points_at_log || 0} monthly pts accumulated): ${row.notes || ''}`.slice(0, 4000),
+          String(row.id),
+          user.displayName,
+          String(user.id),
+        ],
+      ).catch(() => {});
+
+      const admins = await raw<any>(`SELECT email FROM users WHERE is_admin = TRUE AND is_active = TRUE`).catch(() => []);
+      const adminEmails = admins.map((a) => String(a.email || '')).filter(Boolean);
+      if (adminEmails.length > 0) {
+        const html = renderKonstructumEmail({
+          platform: 'GEMS',
+          badgeText: 'Executive Involvement Requested',
+          badgeColor: 'purple',
+          headline: `Executive Management Involvement: ${row.client_name} (${agency})`,
+          lead: `${user.displayName} has requested Executive Management involvement to advance the stakeholder relationship with ${row.client_name} at ${companyName}.`,
+          rows: [
+            { label: 'Stakeholder', value: row.client_name },
+            { label: 'Agency', value: `${agency} (${companyName})` },
+            { label: 'Entity', value: row.business_arm || 'KCC' },
+            { label: 'Proposed Category', value: `${category} (${CATEGORY_POINTS[category]} pts)` },
+            { label: 'Company Monthly Points', value: `${row.executive_monthly_points_at_log || 0} / 20 pts qualification threshold` },
+            { label: 'Requested By', value: user.displayName },
+          ],
+          notesTitle: 'Meeting Notes & Qualification Justification',
+          notesBody: row.notes || '',
+          ctaLabel: 'Review in GEMS',
+          ctaUrl: 'https://konstructum-gems-six.vercel.app/gems/review',
+        });
+        await sendPlatformEmail({
+          to: adminEmails,
+          subject: `GEMS Executive Involvement Request — ${row.client_name} (${agency})`,
+          text: `${user.displayName} requested Executive Management involvement for ${row.client_name} (${agency}).`,
+          html,
+        }).catch(() => {});
+      }
+    }
+
     return sendJson(res, 201, { interaction: mapGemsInteraction(row) });
   }
 
@@ -167,8 +324,11 @@ export default methodGuard(['GET', 'POST', 'PATCH', 'DELETE'], async (req, res) 
     return sendJson(res, 200, { deleted: true });
   }
 
-  // PATCH — reclassification is a review action, so it is admin-only.
+  // PATCH — accepting or reclassifying is an Admin-only review action.
   await requireAdmin(req);
+  const existing = await rawOne<any>('SELECT * FROM gems_interactions WHERE id = $1', [id]);
+  if (!existing) throw new HttpError(404, 'Interaction not found.');
+
   const body = await readJson(req);
   const assignments: string[] = [];
   const values: any[] = [];
@@ -178,11 +338,16 @@ export default methodGuard(['GET', 'POST', 'PATCH', 'DELETE'], async (req, res) 
     const category = String(body.category ?? body.Category);
     if (!CATEGORY_POINTS[category]) throw new HttpError(400, 'Category must be Crown Jewel, Pearl, Coral, or Ruby.');
     assignments.push(`category = ${bind(category)}`);
-    // Points follow the category, otherwise the score silently disagrees with it.
     assignments.push(`points = ${bind(CATEGORY_POINTS[category])}`);
   }
   if ('finalClassification' in body) {
-    assignments.push(`final_classification = ${bind(optionalString(body.finalClassification, 100))}`);
+    const finalCat = optionalString(body.finalClassification, 100);
+    assignments.push(`final_classification = ${bind(finalCat)}`);
+    // Ensure points match finalClassification if category wasn't explicitly passed
+    if (!('category' in body) && !('Category' in body) && finalCat && CATEGORY_POINTS[finalCat]) {
+      assignments.push(`category = ${bind(finalCat)}`);
+      assignments.push(`points = ${bind(CATEGORY_POINTS[finalCat])}`);
+    }
   }
   if ('reviewStatus' in body || 'ReviewStatus' in body) {
     const status = String(body.reviewStatus ?? body.ReviewStatus);
@@ -203,18 +368,71 @@ export default methodGuard(['GET', 'POST', 'PATCH', 'DELETE'], async (req, res) 
   );
   if (!row) throw new HttpError(404, 'Interaction not found.');
 
+  // 1. Ensure a linked Follow-Up Action exists in `gems_actions` if follow-up is set
+  const followUpActionCreated = await ensureFollowUpActionForInteraction(row, user.displayName, user.id).catch(() => false);
+
+  // 2. Resolve employee email and send branded notification email (+ .ics calendar attachment if follow-up exists)
+  const recipient = await resolveInteractionEmployeeEmail(row, user.email);
+  const finalCategory = String(row.final_classification || row.category || 'Ruby');
+  const previousCategory = String(existing.category || finalCategory);
+  const isValidated = row.review_status === 'Validated';
+  const decision: 'Accepted' | 'Reclassified' =
+    isValidated && finalCategory === previousCategory ? 'Accepted' : 'Reclassified';
+
+  // Calculate employee's monthly points total for the reporting month
+  const monthSumRow = await rawOne<{ total: number }>(
+    `SELECT COALESCE(SUM(points), 0)::int AS total
+       FROM gems_interactions
+      WHERE reporting_month = $1
+        AND (lower(target_user) = lower($2) OR lower(logged_by) = lower($2))`,
+    [row.reporting_month || '', recipient.name || row.target_user || row.logged_by || ''],
+  ).catch(() => ({ total: Number(row.points || 0) }));
+
+  const followUpDateStr = row.follow_up_date
+    ? new Date(row.follow_up_date).toISOString().slice(0, 10)
+    : '';
+
+  const mailResult = await sendGemsReviewNotificationEmail({
+    to: recipient.email,
+    employeeName: recipient.name,
+    stakeholderName: String(row.client_name || 'Stakeholder'),
+    companyName: String(row.company_name || ''),
+    agency: String(row.agency || ''),
+    businessArm: String(row.business_arm || 'KCC'),
+    interactionType: String(row.interaction_type || 'Meeting'),
+    decision,
+    previousCategory,
+    finalCategory,
+    pointsAwarded: Number(row.points || CATEGORY_POINTS[finalCategory] || 1),
+    monthlyPointsTotal: monthSumRow?.total ?? Number(row.points || 0),
+    notes: String(row.notes || row.justification || ''),
+    reviewedBy: user.displayName,
+    followUpRequired: Boolean(row.follow_up_required),
+    followUpDate: followUpDateStr,
+    interactionId: String(row.id),
+  }).catch((err) => {
+    console.error('[gems] Review notification email error', err);
+    return { sent: false, transport: 'console' as const };
+  });
+
   await raw(
-    `INSERT INTO gems_audit_log (entity_type, entity_id, action, field_name, new_value, user_name, user_email, source, details)
-     VALUES ('Interaction', $1, $2, 'Classification', $3, $4, $5, 'GEMS', $6)`,
+    `INSERT INTO gems_audit_log (entity_type, entity_id, action, field_name, old_value, new_value, user_name, user_email, source, details)
+     VALUES ('Interaction', $1, $2, 'Classification', $3, $4, $5, $6, 'GEMS', $7)`,
     [
       id,
-      'Approved',
-      String(body.reviewStatus ?? body.ReviewStatus ?? row.category),
+      decision === 'Accepted' ? 'Approved' : 'Rejected',
+      previousCategory,
+      `${finalCategory} (${row.review_status})`,
       user.displayName,
       user.email,
-      'Reclassified during review',
+      `${decision} as ${finalCategory} (${row.points} pts). Email to ${recipient.email}: ${mailResult.sent ? 'sent' : 'queued'} (${mailResult.transport})${followUpDateStr ? ` · Follow-up: ${followUpDateStr}` : ''}`,
     ],
   );
 
-  return sendJson(res, 200, { interaction: mapGemsInteraction(row) });
+  return sendJson(res, 200, {
+    interaction: mapGemsInteraction(row),
+    notificationSent: mailResult.sent,
+    recipientEmail: recipient.email,
+    followUpActionCreated,
+  });
 });

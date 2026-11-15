@@ -101,6 +101,9 @@ export interface GemsInteractionRecord {
   FollowUpRequired: boolean;
   FollowUpDate: string;
   ScheduledDate: string;
+  notificationSent?: boolean;
+  recipientEmail?: string;
+  followUpActionCreated?: boolean;
 }
 
 export interface GemsComplianceRecord {
@@ -353,12 +356,21 @@ export async function updateGemsInteractionClassification(
     influencePercent?: number;
   },
 ): Promise<GemsInteractionRecord> {
-  const result = await apiRequest<{ interaction: GemsInteractionRecord }>('/gems/interactions', {
+  const result = await apiRequest<{
+    interaction: GemsInteractionRecord;
+    notificationSent?: boolean;
+    recipientEmail?: string;
+    followUpActionCreated?: boolean;
+  }>('/gems/interactions', {
     method: 'PATCH',
     query: { id },
     body: data as any,
   });
-  return result.interaction;
+  return Object.assign(result.interaction, {
+    notificationSent: result.notificationSent,
+    recipientEmail: result.recipientEmail,
+    followUpActionCreated: result.followUpActionCreated,
+  });
 }
 
 export async function deleteGemsInteraction(context: KriContext, id: string): Promise<void> {

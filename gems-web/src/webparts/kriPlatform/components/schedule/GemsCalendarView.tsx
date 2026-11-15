@@ -32,7 +32,14 @@ function parseMeetingDate(interaction: GemsInteractionRecord): string | null {
   const notes = interaction.Notes || '';
   const match = notes.match(/Date:\s*(\d{4}-\d{2}-\d{2})/);
   if (match) return match[1];
-  if (interaction.FollowUpDate && interaction.InteractionType === 'Meeting') return interaction.FollowUpDate;
+  if (interaction.InteractionType === 'Meeting' && !interaction.FollowUpDate && interaction.LoggedAt) {
+    return interaction.LoggedAt;
+  }
+  return null;
+}
+
+function parseFollowUpDate(interaction: GemsInteractionRecord): string | null {
+  if (interaction.FollowUpDate) return interaction.FollowUpDate;
   return null;
 }
 
@@ -85,18 +92,34 @@ export default function GemsCalendarView({ context }: Props) {
 
   const entries = useMemo(() => {
     const result: CalendarEntry[] = [];
+    const interactionFollowUpIds = new Set<string>();
 
-    interactions.filter((i) => i.InteractionType === 'Meeting' || parseMeetingDate(i)).forEach((i) => {
-      const d = parseMeetingDate(i);
-      if (d) {
+    interactions.forEach((i) => {
+      const meetingDate = parseMeetingDate(i);
+      const followUpDate = parseFollowUpDate(i);
+
+      if (meetingDate && meetingDate !== followUpDate) {
         result.push({
           id: `meeting-${i.ID}`,
-          date: d,
+          date: meetingDate,
           title: `${i.ClientName || i.Title}`,
-          subtitle: `Meeting with ${i.TargetUser || 'Unknown'} · ${i.BusinessArm || ''}`.trim(),
+          subtitle: `${i.InteractionType || 'Meeting'} with ${i.TargetUser || i.LoggedBy || 'Unknown'} · ${i.Agency || i.BusinessArm || ''}`.trim(),
           type: 'meeting',
           status: 'Meeting',
           route: i.ClientID ? `/gems/stakeholders/${i.ClientID}` : '/gems/dashboard',
+        });
+      }
+
+      if (followUpDate) {
+        interactionFollowUpIds.add(String(i.ID));
+        result.push({
+          id: `followup-${i.ID}`,
+          date: followUpDate,
+          title: `Follow-up: ${i.ClientName || i.Title}`,
+          subtitle: `${i.InteractionType} · ${i.FinalClassification || i.Category} · ${i.Agency || i.BusinessArm || ''} · ${i.TargetUser || i.LoggedBy || ''}`.replace(/·\s*$/, '').trim(),
+          type: 'follow_up',
+          status: i.ReviewStatus === 'Validated' ? 'Validated Follow-up' : 'Follow-up',
+          route: i.ClientID ? `/gems/stakeholders/${i.ClientID}` : '/gems/actions',
         });
       }
     });
@@ -136,18 +159,22 @@ export default function GemsCalendarView({ context }: Props) {
     });
 
     actions.forEach((a) => {
+      if (a.Source === 'Interaction' && a.SourceId && interactionFollowUpIds.has(String(a.SourceId))) {
+        return;
+      }
       if (a.DueDate && a.Status !== 'Completed' && a.Status !== 'Cancelled') {
         const today_d = new Date();
         const ninetyDays = new Date(today_d.getTime() + 90 * 86400000);
         const due = new Date(a.DueDate);
         if (due <= ninetyDays) {
           const overdue = due < today_d;
+          const isFollowUp = a.ActionType === 'FollowUp';
           result.push({
             id: `action-${a.ID}`,
             date: a.DueDate,
-            title: a.Title,
+            title: a.Title || a.EntityName || 'Action Item',
             subtitle: `${a.EntityName || a.EntityType} · ${overdue ? 'OVERDUE' : `Due ${formatDate(a.DueDate)}`}`,
-            type: overdue ? 'action_overdue' : 'action_due',
+            type: overdue ? 'action_overdue' : isFollowUp ? 'follow_up' : 'action_due',
             status: overdue ? 'Overdue' : a.Status,
             route: '/gems/actions',
           });
@@ -401,8 +428,9 @@ export default function GemsCalendarView({ context }: Props) {
             </IconButton>
           </Stack>
         </Stack>
-        <Stack direction="row" spacing={1.5} sx={{ mt: 1.5 }}>
+        <Stack direction="row" spacing={1.5} sx={{ mt: 1.5, flexWrap: 'wrap', rowGap: 1 }}>
           {[
+            { label: 'Follow-ups', type: 'follow_up', color: '#7C3AED' },
             { label: 'Meetings', type: 'meeting', color: '#1A73E8' },
             { label: 'Compliance', type: 'compliance_expiry', color: '#E37400' },
             { label: 'Due Items', type: 'action_due', color: '#2E7D32' },
