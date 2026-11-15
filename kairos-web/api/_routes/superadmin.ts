@@ -3,7 +3,7 @@ import { requireSession, hashPassword, invalidateSessionCache, USER_PUBLIC_COLUM
 import { methodGuard, readJson, sendJson, HttpError, optionalString, toBoolean } from '../_lib/http.js';
 import { raw, rawOne } from '../_lib/db.js';
 
-export const SUPERADMIN_EMAILS = ['bellogbolahan247@gmail.com'];
+export const SUPERADMIN_EMAILS = ['mbello@konstructum.com'];
 
 export function isSuperAdmin(email: string | null | undefined): boolean {
   if (!email) return false;

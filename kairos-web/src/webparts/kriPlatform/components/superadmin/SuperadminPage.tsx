@@ -62,7 +62,7 @@ interface TelemetryData {
   auditLog: any[];
 }
 
-const SUPERADMIN_EMAIL = 'bellogbolahan247@gmail.com';
+const SUPERADMIN_EMAIL = 'mbello@konstructum.com';
 
 export default function SuperadminPage({ context }: { context: KriContext }) {
   const theme = useTheme();

@@ -6,7 +6,7 @@ const ADMIN_GROUPS = ['GEMS Administrators', 'KRI Administrators', 'Site Owners'
 const MANAGER_GROUPS = ['GEMS Managers', 'KRI Managers'];
 const CONTRIBUTOR_GROUPS = ['GEMS Contributors', 'KRI Contributors', 'Site Members'];
 
-const ADMIN_EMAILS = ['bellogbolahan247@gmail.com', 'onechief011@gmail.com'];
+const ADMIN_EMAILS = ['mbello@konstructum.com', 'onechief011@gmail.com'];
 
 let cachedRole: GemsRole | null = null;
 let cachedEmail = '';

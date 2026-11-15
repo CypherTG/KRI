@@ -302,7 +302,7 @@ export default function AppShell({
   const effectiveComms = useMemo(() => mergeById(storeComms, searchIndex?.comms || []), [storeComms, searchIndex?.comms]);
   const effectiveUsers = useMemo(() => mergeById(storeUsers, searchIndex?.users || []), [storeUsers, searchIndex?.users]);
   const isAdmin = isManagementAdminUser(currentUserProfile) || isAdminAccount;
-  const isSuperadmin = (currentUserProfile?.Email || '').toLowerCase().trim() === 'bellogbolahan247@gmail.com';
+  const isSuperadmin = (currentUserProfile?.Email || '').toLowerCase().trim() === 'mbello@konstructum.com';
   const approvedClientIds = useMemo(() => approvedClientIdsForRequestUser(accessRequests, siteUser || context.pageContext.user), [accessRequests, context.pageContext.user, siteUser]);
   const visibleEffectiveClients = useMemo(() => (
     effectiveClients.filter((client) => canViewClient(client, siteUser || context.pageContext.user, isAdmin, approvedClientIds))

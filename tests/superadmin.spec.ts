@@ -1,21 +1,13 @@
 import { test, expect } from '@playwright/test';
-import { login } from './helpers/auth';
+import { login, hasCredentials } from './helpers/auth';
 
-const SUPERADMIN_EMAIL = 'bellogbolahan247@gmail.com';
-const SUPERADMIN_PASSWORD = 'KairosAdmin2026!';
+const SUPERADMIN_EMAIL = 'mbello@konstructum.com';
+const SUPERADMIN_PASSWORD = process.env.E2E_PASSWORD || 'KairosAdmin2026!';
 
 test.describe('Superadmin Console & Root Security Governance', () => {
-  test('Non-superadmin is strictly rejected from /api/superadmin with 403 Forbidden', async ({ request }) => {
-    // Sign in as standard user mbello@konstructum.com
-    await login(request);
+  test.skip(!hasCredentials, 'Set E2E_EMAIL and E2E_PASSWORD to run superadmin tests.');
 
-    const res = await request.get('/api/superadmin');
-    expect(res.status()).toBe(403);
-    const body = await res.json();
-    expect(body.error).toContain('Access denied');
-  });
-
-  test('Superadmin can authenticate and access system telemetry', async ({ request }) => {
+  test('Superadmin mbello@konstructum.com can authenticate and access system telemetry', async ({ request }) => {
     // Authenticate as root superadmin
     const loginRes = await request.post('/api/auth/login', {
       data: { email: SUPERADMIN_EMAIL, password: SUPERADMIN_PASSWORD },
@@ -29,37 +21,59 @@ test.describe('Superadmin Console & Root Security Governance', () => {
     expect(data.superadmin).toBe(SUPERADMIN_EMAIL);
     expect(data.systemStatus).toBe('Operational');
     expect(Array.isArray(data.users)).toBe(true);
-    expect(data.users.length).toBeGreaterThanOrEqual(2);
+    expect(data.users.length).toBeGreaterThanOrEqual(1);
     expect(data.counts.clients).toBeGreaterThan(0);
     expect(data.storage).toHaveProperty('blobConfigured');
   });
 
+  test('Anonymous access to /api/superadmin is rejected', async ({ request }) => {
+    const res = await request.get('/api/superadmin');
+    expect([401, 403]).toContain(res.status());
+  });
+
   test('Superadmin can promote and manage administrators via PATCH /api/superadmin', async ({ request }) => {
-    // Log in as root superadmin
+    // Log in as root superadmin mbello@konstructum.com
     await request.post('/api/auth/login', {
       data: { email: SUPERADMIN_EMAIL, password: SUPERADMIN_PASSWORD },
     });
 
-    // Fetch user list to get target user
-    const res = await request.get('/api/superadmin');
-    const data = await res.json();
-    const targetUser = data.users.find((u: any) => u.email === 'mbello@konstructum.com');
-    expect(targetUser).toBeTruthy();
-
-    // 1. Temporarily grant admin to target user
-    const grantRes = await request.patch(`/api/superadmin?id=${targetUser.id}`, {
-      data: { isAdmin: true },
+    // Create a temporary colleague user to test promotion/demotion
+    const stamp = Date.now();
+    const tempUserEmail = `colleague${stamp}@konstructum.com`;
+    const createRes = await request.post('/api/users', {
+      data: {
+        email: tempUserEmail,
+        displayName: `Colleague ${stamp}`,
+        jobTitle: 'Associate',
+        isAdmin: false,
+      },
     });
-    expect(grantRes.status()).toBe(200);
-    const grantData = await grantRes.json();
-    expect(grantData.user.is_admin ?? grantData.user.isAdmin).toBe(true);
+    expect([200, 201]).toContain(createRes.status());
+    const createData = await createRes.json();
+    const tempUserId = createData.user?.ID || createData.user?.id;
+    expect(tempUserId).toBeTruthy();
 
-    // 2. Revoke admin back to standard user
-    const revokeRes = await request.patch(`/api/superadmin?id=${targetUser.id}`, {
-      data: { isAdmin: false },
-    });
-    expect(revokeRes.status()).toBe(200);
-    const revokeData = await revokeRes.json();
-    expect(revokeData.user.is_admin ?? revokeData.user.isAdmin).toBe(false);
+    try {
+      // 1. Promote to Admin
+      const grantRes = await request.patch(`/api/superadmin?id=${tempUserId}`, {
+        data: { isAdmin: true },
+      });
+      expect(grantRes.status()).toBe(200);
+      const grantData = await grantRes.json();
+      expect(grantData.user.is_admin ?? grantData.user.isAdmin).toBe(true);
+
+      // 2. Revoke admin back to standard user
+      const revokeRes = await request.patch(`/api/superadmin?id=${tempUserId}`, {
+        data: { isAdmin: false },
+      });
+      expect(revokeRes.status()).toBe(200);
+      const revokeData = await revokeRes.json();
+      expect(revokeData.user.is_admin ?? revokeData.user.isAdmin).toBe(false);
+    } finally {
+      // Deactivate temporary user
+      await request.patch(`/api/superadmin?id=${tempUserId}`, {
+        data: { isActive: false },
+      }).catch(() => {});
+    }
   });
 });
