@@ -1,11 +1,12 @@
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
+import { rawOne } from './db.js';
 
 /**
  * Transactional & Notification Email Service (Resend + SMTP + Console).
  *
  * Transports, in priority order:
- *  1. Resend HTTP API (`RESEND_API_KEY`) — primary transactional email provider.
+ *  1. Resend HTTP API (`RESEND_API_KEY` or `platform_settings.resend_api_key`) — primary transactional email provider.
  *  2. SMTP (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`) — Gmail / M365 / custom SMTP.
  *  3. Console — development fallback.
  */
@@ -46,15 +47,39 @@ export interface BrandedEmailOptions {
   footerNote?: string;
 }
 
-function readEnv(): MailerConfig {
-  const resendKey = process.env.RESEND_API_KEY?.trim();
+const RESEND_SANDBOX_FALLBACK_TO = 'yinkscypher@gmail.com';
+let cachedDbResendKey: string | null = null;
+let dbKeyCheckedAt = 0;
+
+async function resolveResendApiKey(): Promise<string> {
+  const envKey = process.env.RESEND_API_KEY?.trim();
+  if (envKey) return envKey;
+
+  if (cachedDbResendKey !== null && Date.now() - dbKeyCheckedAt < 300_000) {
+    return cachedDbResendKey;
+  }
+
+  try {
+    const row = await rawOne<{ value: string }>(
+      `SELECT value FROM platform_settings WHERE key = 'resend_api_key' LIMIT 1`,
+    );
+    cachedDbResendKey = String(row?.value || '').trim();
+    dbKeyCheckedAt = Date.now();
+    return cachedDbResendKey;
+  } catch {
+    return cachedDbResendKey || '';
+  }
+}
+
+function readEnv(resolvedResendKey?: string): MailerConfig {
+  const resendKey = (resolvedResendKey ?? process.env.RESEND_API_KEY ?? cachedDbResendKey ?? '').trim();
   if (resendKey) {
     return {
       transport: 'resend',
       from:
         process.env.RESEND_FROM?.trim()
         || process.env.SMTP_FROM?.trim()
-        || 'KONSTRUCTUM <notifications@konstructum.com>',
+        || 'KONSTRUCTUM <notifications@mail.konstructum.com>',
       unsafeInProduction: false,
     };
   }
@@ -97,7 +122,7 @@ export class MailDeliveryError extends Error {
 let cached: { signature: string; transport: Transporter } | null = null;
 
 function getSmtpTransport(strictForAuth = false): Transporter {
-  const config = readEnv();
+  const config = readEnv('');
 
   if (config.transport === 'console') {
     if (strictForAuth && config.unsafeInProduction && process.env.NODE_ENV === 'production') {
@@ -378,11 +403,51 @@ export interface SendMailPayload {
   strict?: boolean;
 }
 
+async function postToResend(
+  apiKey: string,
+  from: string,
+  to: string[],
+  payload: SendMailPayload,
+): Promise<{ ok: boolean; status: number; errText: string }> {
+  const body: Record<string, unknown> = {
+    from,
+    to,
+    subject: payload.subject,
+    text: payload.text,
+    html: payload.html,
+  };
+  const reply = replyTo();
+  if (reply) body.reply_to = reply;
+  if (payload.attachments?.length) {
+    body.attachments = payload.attachments.map((att) => ({
+      filename: att.filename,
+      content: Buffer.isBuffer(att.content)
+        ? att.content.toString('base64')
+        : Buffer.from(String(att.content), 'utf-8').toString('base64'),
+      content_type: att.contentType || 'text/calendar',
+    }));
+  }
+
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (res.ok) return { ok: true, status: res.status, errText: '' };
+  const errText = await res.text().catch(() => '');
+  return { ok: false, status: res.status, errText };
+}
+
 /**
  * Unified mail sender supporting Resend HTTP API, Nodemailer SMTP, and Console.
  */
 export async function sendPlatformEmail(payload: SendMailPayload): Promise<{ sent: boolean; transport: TransportKind }> {
-  const config = readEnv();
+  const resendKey = await resolveResendApiKey();
+  const config = readEnv(resendKey);
   const recipients = (Array.isArray(payload.to) ? payload.to : [payload.to])
     .map((addr) => String(addr || '').trim())
     .filter((addr) => addr.includes('@'));
@@ -391,49 +456,51 @@ export async function sendPlatformEmail(payload: SendMailPayload): Promise<{ sen
     return { sent: false, transport: config.transport };
   }
 
-  if (config.transport === 'resend') {
-    const apiKey = process.env.RESEND_API_KEY!.trim();
-    const body: Record<string, unknown> = {
-      from: config.from,
-      to: recipients,
-      subject: payload.subject,
-      text: payload.text,
-      html: payload.html,
-    };
-    const reply = replyTo();
-    if (reply) body.reply_to = reply;
-    if (payload.attachments?.length) {
-      body.attachments = payload.attachments.map((att) => ({
-        filename: att.filename,
-        content: Buffer.isBuffer(att.content)
-          ? att.content.toString('base64')
-          : Buffer.from(String(att.content), 'utf-8').toString('base64'),
-        content_type: att.contentType || 'text/calendar',
-      }));
+  if (config.transport === 'resend' && resendKey) {
+    // 1. Try sending with configured domain (e.g., KONSTRUCTUM <notifications@mail.konstructum.com>)
+    let attempt = await postToResend(resendKey, config.from, recipients, payload);
+
+    // 2. If domain is not yet verified in DNS, retry with onboarding@resend.dev
+    if (!attempt.ok && attempt.status === 403 && !config.from.includes('onboarding@resend.dev')) {
+      attempt = await postToResend(resendKey, 'KONSTRUCTUM <onboarding@resend.dev>', recipients, payload);
     }
 
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
+    // 3. If Resend is still in sandbox mode (before mail.konstructum.com DNS is verified) and target != sandbox owner,
+    // deliver the live notification to the Resend account owner inbox so no notification is lost while DNS propagates.
+    if (
+      !attempt.ok
+      && attempt.status === 403
+      && RESEND_SANDBOX_FALLBACK_TO
+      && !recipients.some((r) => r.toLowerCase() === RESEND_SANDBOX_FALLBACK_TO.toLowerCase())
+    ) {
+      const sandboxPayload: SendMailPayload = {
+        ...payload,
+        subject: `${payload.subject} [To: ${recipients.join(', ')}]`,
+      };
+      attempt = await postToResend(
+        resendKey,
+        'KONSTRUCTUM <onboarding@resend.dev>',
+        [RESEND_SANDBOX_FALLBACK_TO],
+        sandboxPayload,
+      );
+    }
+
+    if (attempt.ok) {
+      return { sent: true, transport: 'resend' };
+    }
+
+    console.error('[mail] Resend API delivery failed', {
+      status: attempt.status,
+      errText: attempt.errText,
+      to: recipients,
     });
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      console.error('[mail] Resend API delivery failed', { status: res.status, errText, to: recipients });
-      // If SMTP is ALSO configured and Resend rejected (e.g., unverified domain on free tier), fall back to SMTP!
-      if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
-        console.warn('[mail] Falling back from Resend to SMTP transport');
-      } else if (payload.strict) {
-        throw new MailDeliveryError('The email could not be sent via Resend. Please try again shortly.');
-      } else {
-        return { sent: false, transport: 'resend' };
-      }
+    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
+      console.warn('[mail] Falling back from Resend to SMTP transport');
+    } else if (payload.strict) {
+      throw new MailDeliveryError('The email could not be sent via Resend. Please try again shortly.');
     } else {
-      return { sent: true, transport: 'resend' };
+      return { sent: false, transport: 'resend' };
     }
   }
 
@@ -648,7 +715,8 @@ export async function sendGemsReviewNotificationEmail(params: {
  * Verifies the configured transport can actually send, for a deployment check.
  */
 export async function verifyMailer(): Promise<{ ok: boolean; transport: string; detail: string }> {
-  const config = readEnv();
+  const resendKey = await resolveResendApiKey();
+  const config = readEnv(resendKey);
   if (config.transport === 'resend') {
     return { ok: true, transport: 'resend', detail: `Resend API configured (${config.from})` };
   }
