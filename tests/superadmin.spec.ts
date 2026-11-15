@@ -52,7 +52,7 @@ test.describe('Superadmin Console & Root Security Governance', () => {
     });
     expect(grantRes.status()).toBe(200);
     const grantData = await grantRes.json();
-    expect(grantData.user.is_admin || grantData.user.isAdmin).toBe(true);
+    expect(grantData.user.is_admin ?? grantData.user.isAdmin).toBe(true);
 
     // 2. Revoke admin back to standard user
     const revokeRes = await request.patch(`/api/superadmin?id=${targetUser.id}`, {
@@ -60,6 +60,6 @@ test.describe('Superadmin Console & Root Security Governance', () => {
     });
     expect(revokeRes.status()).toBe(200);
     const revokeData = await revokeRes.json();
-    expect(revokeData.user.is_admin || revokeData.user.isAdmin).toBe(false);
+    expect(revokeData.user.is_admin ?? revokeData.user.isAdmin).toBe(false);
   });
 });

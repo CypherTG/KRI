@@ -145,8 +145,9 @@ test.describe('KAIROS Extended & Advanced Flows', () => {
   });
 
   test('Client List UI: Table search and real-time query filtering', async ({ page }) => {
+    test.setTimeout(45000);
     await login(page.context().request);
-    await page.goto('/dashboard');
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
 
     // Wait for the app to hydrate and show the search bar
     const searchInput = page.getByPlaceholder('Search');

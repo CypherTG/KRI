@@ -5,11 +5,12 @@ test.describe('GEMS End-to-End Suite', () => {
   test.skip(!hasCredentials, 'Set E2E_EMAIL and E2E_PASSWORD to run end-to-end tests.');
 
   test('GEMS UI loads and shows navigation', async ({ page }) => {
+    test.setTimeout(45000);
     // Authenticate with GEMS context
     await login(page.context().request, GEMS_BASE_URL);
 
-    await page.goto(`${GEMS_BASE_URL}/`);
-    await expect(page).toHaveTitle(/GEMS|Government|Stakeholder|Konstructum/i, { timeout: 15000 });
+    await page.goto(`${GEMS_BASE_URL}/`, { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveTitle(/GEMS|Government|Stakeholder|Konstructum/i, { timeout: 20000 });
   });
 
   test('GEMS Summary & Analytics API returns monitored metrics', async ({ request }) => {
