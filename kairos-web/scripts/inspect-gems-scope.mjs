@@ -24,6 +24,8 @@ function normalize(value) {
   const key = String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
   if (!key) return '';
   if (key.includes('nepl')) return 'NEPL';
+  if (key.includes('nuims')) return 'NUIMS';
+  if (key.includes('enserv')) return 'ENSERV';
   if (key.includes('nnpc')) return 'NNPC';
   return AGENCIES.find((a) => key.includes(a.toLowerCase())) || '';
 }

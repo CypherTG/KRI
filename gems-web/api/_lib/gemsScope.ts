@@ -34,6 +34,8 @@ export function normalizeGemsAgency(value: string | null | undefined): GemsAgenc
   const key = String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
   if (!key) return '';
   if (key.includes('nepl')) return 'NEPL';
+  if (key.includes('nuims')) return 'NUIMS';
+  if (key.includes('enserv')) return 'ENSERV';
   if (key.includes('nnpc')) return 'NNPC';
   const match = GEMS_ALLOWED_AGENCIES.find((agency) => key.includes(agency.toLowerCase()));
   return match || '';

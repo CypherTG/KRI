@@ -9,6 +9,8 @@ export function normalizeGemsAgency(value: string): string {
   const normalized = normalizeLookupKey(value).replace(/[^a-z0-9]+/g, '');
   if (!normalized) return '';
   if (normalized.includes('nepl')) return 'NEPL';
+  if (normalized.includes('nuims')) return 'NUIMS';
+  if (normalized.includes('enserv')) return 'ENSERV';
   if (normalized.includes('nnpc')) return 'NNPC';
   const match = GEMS_ALLOWED_AGENCIES.find((agency) => normalized.includes(agency.toLowerCase()));
   return match || '';
