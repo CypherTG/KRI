@@ -13,6 +13,7 @@ import AutomationManager from './automations/AutomationManager';
 import UserProfile from './profile/UserProfile';
 import HelpCenter from './shared/HelpCenter';
 import SettingsPage from './settings/SettingsPage';
+import SuperadminPage from './superadmin/SuperadminPage';
 import { getCurrentUserProfile, seedKRIUsersFromSharePointIdentity, importClientsFromExcel, ImportResult } from '../services/graphApi';
 import { seedLookupListsFromCurrentRegistry } from '../services/sharepointProvisioning';
 import { useStore } from '../store/useStore';
@@ -260,6 +261,7 @@ export default function App({ context }: Props) {
                 />
               )}
             />
+            <Route path="/superadmin" element={<SuperadminPage context={context} />} />
             <Route path="*" element={<Navigate to={homeRoute} replace />} />
           </Routes>
         </AppShell>

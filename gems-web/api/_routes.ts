@@ -36,6 +36,7 @@ import biodataHandler from './_routes/biodata.js';
 import biodataPhotoHandler from './_routes/biodata-photo.js';
 import accessRequestsHandler from './_routes/access-requests.js';
 import acumenHandler from './_routes/acumen.js';
+import superadminHandler from './_routes/superadmin.js';
 
 import gemsInteractionsHandler from './_routes/gems-interactions.js';
 import gemsSummaryHandler from './_routes/gems-summary.js';
@@ -95,6 +96,7 @@ const ROUTES: Route[] = [
   { path: '/lookups', handler: lookupHandler, description: 'Job title / project lookups' },
   { path: '/users', handler: userHandler, description: 'People registry and admin controls' },
   { path: '/acumen', handler: acumenHandler, description: 'Company documents' },
+  { path: '/superadmin', handler: superadminHandler, description: 'Super Administrator operations and control' },
 
   { path: '/health', handler: healthHandler, description: 'Deployment diagnostics (unauthenticated)' },
 ];

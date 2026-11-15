@@ -36,6 +36,7 @@ import importHandler from './_routes/import.js';
 import airosHandler from './_routes/airos.js';
 import healthHandler from './_routes/health.js';
 import profilePhotoHandler from './_routes/profile-photo.js';
+import superadminHandler from './_routes/superadmin.js';
 
 import { sendError } from './_lib/http.js';
 import { HttpError } from './_lib/db.js';
@@ -74,6 +75,7 @@ const ROUTES: Route[] = [
   { path: '/airos', handler: airosHandler, description: 'AIROS assistant (Gemini proxy)' },
   { path: '/health', handler: healthHandler, description: 'Deployment diagnostics (unauthenticated)' },
   { path: '/profile-photo', handler: profilePhotoHandler, description: 'Upload / remove your own profile photo' },
+  { path: '/superadmin', handler: superadminHandler, description: 'Super Administrator operations and control' },
 ];
 
 const BY_PATH = new Map(ROUTES.map((route) => [route.path, route]));

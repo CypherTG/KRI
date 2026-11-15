@@ -35,6 +35,7 @@ import AddCircleOutlineOutlinedIcon from '@mui/icons-material/AddCircleOutlineOu
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import MenuIcon from '@mui/icons-material/Menu';
 import SettingsIcon from '@mui/icons-material/Settings';
+import SecurityIcon from '@mui/icons-material/Security';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { KriContext } from '../../../../types/kri';
 import { getAllComms, getClients, getCurrentSiteUser, getCurrentUserPhotoUrl, getKRIUsers, isManagementAdminUser } from '../../services/graphApi';
@@ -275,6 +276,7 @@ export default function AppShell({
     if (location.pathname === '/automations') return 'Automations';
     if (location.pathname === '/profile') return 'Profile';
     if (location.pathname === '/settings') return 'Settings';
+    if (location.pathname === '/superadmin') return 'Superadmin';
     if (location.pathname === '/help') return 'Help';
     if (location.pathname === '/add-contact') return 'Add contact';
     return 'Workspace';
@@ -300,6 +302,7 @@ export default function AppShell({
   const effectiveComms = useMemo(() => mergeById(storeComms, searchIndex?.comms || []), [storeComms, searchIndex?.comms]);
   const effectiveUsers = useMemo(() => mergeById(storeUsers, searchIndex?.users || []), [storeUsers, searchIndex?.users]);
   const isAdmin = isManagementAdminUser(currentUserProfile) || isAdminAccount;
+  const isSuperadmin = (currentUserProfile?.Email || '').toLowerCase().trim() === 'bellogbolahan247@gmail.com';
   const approvedClientIds = useMemo(() => approvedClientIdsForRequestUser(accessRequests, siteUser || context.pageContext.user), [accessRequests, context.pageContext.user, siteUser]);
   const visibleEffectiveClients = useMemo(() => (
     effectiveClients.filter((client) => canViewClient(client, siteUser || context.pageContext.user, isAdmin, approvedClientIds))
@@ -710,6 +713,13 @@ export default function AppShell({
             {NAV_SUPPORT.map((item) => (
               <NavItem key={item.text} item={item} isActive={location.pathname === item.path} onClick={() => handleNav(item.path)} />
             ))}
+            {isSuperadmin && (
+              <NavItem
+                item={{ text: 'Superadmin', icon: <SecurityIcon sx={{ color: '#6757EF' }} />, path: '/superadmin' }}
+                isActive={location.pathname === '/superadmin'}
+                onClick={() => handleNav('/superadmin')}
+              />
+            )}
           </List>
         </Box>
 
