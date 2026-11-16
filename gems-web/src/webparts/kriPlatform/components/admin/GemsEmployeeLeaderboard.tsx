@@ -24,7 +24,9 @@ import {
   Typography,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import BarChartIcon from '@mui/icons-material/BarChart';
+import MilitaryTechIcon from '@mui/icons-material/MilitaryTech';
+import VerifiedIcon from '@mui/icons-material/Verified';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
@@ -356,9 +358,9 @@ export default function GemsEmployeeLeaderboard({ users, interactions, onJumpToR
   };
 
   const rankBadge = (index: number) => {
-    if (index === 0) return { label: '#1 🥇', bg: '#FEF3C7', color: '#B45309', border: '#FDE68A' };
-    if (index === 1) return { label: '#2 🥈', bg: '#F1F5F9', color: '#334155', border: '#CBD5E1' };
-    if (index === 2) return { label: '#3 🥉', bg: '#FFEDD5', color: '#9A3412', border: '#FED7AA' };
+    if (index === 0) return { label: '#1', bg: '#F0FDF9', color: '#0F766E', border: '#99F6E4' };
+    if (index === 1) return { label: '#2', bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE' };
+    if (index === 2) return { label: '#3', bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE' };
     return { label: `#${index + 1}`, bg: '#F8FAFC', color: '#64748B', border: '#E2E8F0' };
   };
 
@@ -387,15 +389,14 @@ export default function GemsEmployeeLeaderboard({ users, interactions, onJumpToR
                 width: 42,
                 height: 42,
                 borderRadius: 2.5,
-                background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
-                color: '#FFFFFF',
+                background: 'rgba(13, 148, 136, 0.12)',
+                color: '#0D9488',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 4px 12px rgba(217,119,6,0.25)',
               }}
             >
-              <EmojiEventsIcon />
+              <BarChartIcon />
             </Box>
             <Box>
               <Typography sx={{ fontWeight: 900, fontSize: '1.1rem', color: '#0F172A' }}>
@@ -548,6 +549,7 @@ export default function GemsEmployeeLeaderboard({ users, interactions, onJumpToR
                       {/* Rank */}
                       <TableCell>
                         <Chip
+                          icon={index < 3 ? <MilitaryTechIcon sx={{ fontSize: '15px !important', color: `${badge.color} !important` }} /> : undefined}
                           label={badge.label}
                           size="small"
                           sx={{
@@ -604,7 +606,8 @@ export default function GemsEmployeeLeaderboard({ users, interactions, onJumpToR
                             </Typography>
                             {bonusEligible && (
                               <Chip
-                                label="★ Bonus Eligible"
+                                icon={<VerifiedIcon sx={{ fontSize: '13px !important', color: '#15803D !important' }} />}
+                                label="Bonus Eligible"
                                 size="small"
                                 sx={{
                                   height: 18,

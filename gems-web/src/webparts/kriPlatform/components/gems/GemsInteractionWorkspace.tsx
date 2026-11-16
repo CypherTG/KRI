@@ -38,6 +38,7 @@ import {
 } from '../../services/gemsApi';
 import { normalizeLookupKey, normalizeLookupText, userDisplayName } from '../../utils/lookupHelpers';
 import { agencyMatchesTarget, filterGemsEligibleClients, GEMS_AGENCY_OPTIONS, isGemsEligibleInteraction, normalizeGemsAgency } from '../../utils/gemsScope';
+import { useNavigate } from 'react-router-dom';
 import OperationalQueue from '../shared/OperationalQueue';
 import { buildAutomationOperationalItems, OperationalItem } from '../../utils/operations';
 
@@ -175,6 +176,7 @@ type Props = {
   initialAutomations?: IAutomation[];
   initialUsers?: IKRIUser[];
   showLeaderboard?: boolean;
+  hideLogForm?: boolean;
 };
 
 function clientLabel(client: Partial<IClient> | null | undefined): string {
@@ -294,7 +296,9 @@ export default function GemsInteractionWorkspace({
   initialAutomations,
   initialUsers,
   showLeaderboard = true,
+  hideLogForm = false,
 }: Props) {
+  const navigate = useNavigate();
   const [clients, setClients] = useState<IClient[]>([]);
   const [users, setUsers] = useState<IKRIUser[]>([]);
   const [interactions, setInteractions] = useState<GemsInteractionRecord[]>([]);
@@ -649,7 +653,8 @@ export default function GemsInteractionWorkspace({
         </Box>
       </Paper>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', xl: showLeaderboard ? '1.15fr 0.85fr' : '1fr' }, gap: 3 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', xl: !hideLogForm && showLeaderboard ? '1.15fr 0.85fr' : '1fr' }, gap: 3 }}>
+        {!hideLogForm && (
         <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #E8ECF0' }}>
           <Typography sx={{ fontWeight: 800, fontSize: '1rem', mb: 2 }}>Log a stakeholder interaction</Typography>
           <Stack spacing={2}>
@@ -828,8 +833,46 @@ export default function GemsInteractionWorkspace({
               onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
             />
 
-            <Alert severity={executiveThresholdMet ? 'success' : 'warning'} sx={{ borderRadius: 2 }}>
-              Executive management involvement may be requested after lead qualification. Current company monthly points: {selectedCompanyMonthPoints}/20.
+            <Alert
+              severity={executiveThresholdMet ? 'success' : 'warning'}
+              sx={{ borderRadius: 2 }}
+              action={
+                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                  {selectedClient?.ID && (
+                    <Button
+                      size="small"
+                      color="inherit"
+                      variant="outlined"
+                      onClick={() => navigate(`/gems/stakeholders/${selectedClient.ID}`)}
+                      sx={{ fontWeight: 700, fontSize: '0.72rem', borderRadius: 1.5, textTransform: 'none', whiteSpace: 'nowrap' }}
+                    >
+                      Open Stakeholder
+                    </Button>
+                  )}
+                  {selectedClient?.CompanyName && (
+                    <Button
+                      size="small"
+                      color="inherit"
+                      variant="outlined"
+                      onClick={() => navigate(`/gems/agencies/${encodeURIComponent(normalizeLookupKey(selectedClient.CompanyName))}`)}
+                      sx={{ fontWeight: 700, fontSize: '0.72rem', borderRadius: 1.5, textTransform: 'none', whiteSpace: 'nowrap' }}
+                    >
+                      Open Company
+                    </Button>
+                  )}
+                  <Button
+                    size="small"
+                    color="inherit"
+                    variant="outlined"
+                    onClick={() => navigate('/gems/actions')}
+                    sx={{ fontWeight: 700, fontSize: '0.72rem', borderRadius: 1.5, textTransform: 'none', whiteSpace: 'nowrap' }}
+                  >
+                    Escalation Queue
+                  </Button>
+                </Stack>
+              }
+            >
+              Executive management involvement may be requested after lead qualification (20+ monthly company points). Current company monthly points for <strong>{selectedClient?.CompanyName || 'selected company'}</strong>: <strong>{selectedCompanyMonthPoints}/20 pts</strong>.
             </Alert>
 
             <FormControlLabel
@@ -886,6 +929,7 @@ export default function GemsInteractionWorkspace({
             {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
           </Stack>
         </Paper>
+        )}
 
         {showLeaderboard && (
           <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #E8ECF0' }}>
@@ -979,151 +1023,6 @@ export default function GemsInteractionWorkspace({
         items={operationalItems}
         emptyLabel="No open follow-ups are currently logged for this workspace."
       />
-
-      <Paper sx={{ p: { xs: 2.5, md: 3.5 }, borderRadius: 3, border: '1px solid #E2E8F0', background: '#FFFFFF' }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2, mb: 2.5 }}>
-          <Box>
-            <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, color: '#0F7B6C', letterSpacing: '0.1em', textTransform: 'uppercase', mb: 0.4 }}>
-              Executive Reference · 2026 Government Relations Strategy
-            </Typography>
-            <Typography sx={{ fontWeight: 900, fontSize: '1.15rem', color: '#0F172A' }}>
-              Forward-Looking Roadmap
-            </Typography>
-            <Typography sx={{ color: '#475569', mt: 0.5, fontSize: '0.88rem', maxWidth: 720, lineHeight: 1.55 }}>
-              Step-by-step quarterly progression showing how KCC &amp; entity teams move agency contacts from initial identification (<strong>Knowledge / Ruby</strong>) to decision-maker authority (<strong>Intimacy / Crown Jewel</strong>).
-            </Typography>
-          </Box>
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-            <Chip label="1. Ruby (Informator)" size="small" sx={{ fontWeight: 700, fontSize: '0.72rem', background: '#F1F5F9', color: '#334155' }} />
-            <Typography sx={{ color: '#94A3B8', fontWeight: 800, fontSize: '0.8rem' }}>&rarr;</Typography>
-            <Chip label="2. Coral (Connector)" size="small" sx={{ fontWeight: 700, fontSize: '0.72rem', background: '#EFF6FF', color: '#1D4ED8' }} />
-            <Typography sx={{ color: '#94A3B8', fontWeight: 800, fontSize: '0.8rem' }}>&rarr;</Typography>
-            <Chip label="3. Pearl (Recommender)" size="small" sx={{ fontWeight: 700, fontSize: '0.72rem', background: '#F0FDF4', color: '#047857' }} />
-            <Typography sx={{ color: '#94A3B8', fontWeight: 800, fontSize: '0.8rem' }}>&rarr;</Typography>
-            <Chip label="4. Crown Jewel (Approver)" size="small" sx={{ fontWeight: 700, fontSize: '0.72rem', background: '#FEF3C7', color: '#B45309' }} />
-          </Stack>
-        </Box>
-
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(4, minmax(0, 1fr))' }, gap: 2 }}>
-          {ROADMAP.map((item) => {
-            const isActive = item.status === 'Active';
-            return (
-              <Box
-                key={item.period}
-                sx={{
-                  p: 2.25,
-                  borderRadius: 3,
-                  background: item.bgTint,
-                  border: `1.5px solid ${isActive ? item.accent : '#E2E8F0'}`,
-                  borderTop: `4px solid ${item.accent}`,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  boxShadow: isActive ? '0 8px 20px rgba(15, 123, 108, 0.08)' : 'none',
-                }}
-              >
-                <Box>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.25 }}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Box
-                        sx={{
-                          width: 26,
-                          height: 26,
-                          borderRadius: '50%',
-                          background: item.accent,
-                          color: '#FFFFFF',
-                          fontSize: '0.74rem',
-                          fontWeight: 900,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        {item.step}
-                      </Box>
-                      <Typography sx={{ fontSize: '0.78rem', fontWeight: 800, color: item.accent, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        {item.period}
-                      </Typography>
-                    </Stack>
-                    <Chip
-                      label={isActive ? 'Current Focus' : item.status}
-                      size="small"
-                      sx={{
-                        height: 22,
-                        fontSize: '0.68rem',
-                        fontWeight: 800,
-                        background: isActive ? '#0F7B6C' : '#E2E8F0',
-                        color: isActive ? '#FFFFFF' : '#475569',
-                      }}
-                    />
-                  </Stack>
-
-                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    {item.phase}
-                  </Typography>
-                  <Typography sx={{ fontWeight: 900, fontSize: '1.02rem', color: '#0F172A', mt: 0.25 }}>
-                    {item.title}
-                  </Typography>
-
-                  <Box
-                    sx={{
-                      mt: 1,
-                      mb: 1.25,
-                      px: 1.1,
-                      py: 0.45,
-                      borderRadius: 1.5,
-                      background: '#FFFFFF',
-                      border: `1px solid ${item.borderTint}`,
-                      fontSize: '0.71rem',
-                      fontWeight: 700,
-                      color: item.accent,
-                    }}
-                  >
-                    {item.pathway}
-                  </Box>
-
-                  <Typography sx={{ color: '#334155', fontSize: '0.8rem', lineHeight: 1.55, mb: 1.5 }}>
-                    {item.summary}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ pt: 1.25, borderTop: '1px dashed #CBD5E1' }}>
-                  <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.75 }}>
-                    Target Deliverables
-                  </Typography>
-                  <Stack spacing={0.65}>
-                    {item.milestones.map((milestone) => (
-                      <Stack key={milestone} direction="row" spacing={0.85} alignItems="flex-start">
-                        <Box
-                          sx={{
-                            mt: '4px',
-                            width: 14,
-                            height: 14,
-                            borderRadius: '50%',
-                            background: `${item.accent}18`,
-                            color: item.accent,
-                            fontSize: '0.62rem',
-                            fontWeight: 900,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
-                          }}
-                        >
-                          ✓
-                        </Box>
-                        <Typography sx={{ fontSize: '0.76rem', color: '#1E293B', lineHeight: 1.45, fontWeight: 500 }}>
-                          {milestone}
-                        </Typography>
-                      </Stack>
-                    ))}
-                  </Stack>
-                </Box>
-              </Box>
-            );
-          })}
-        </Box>
-      </Paper>
     </Stack>
   );
 }

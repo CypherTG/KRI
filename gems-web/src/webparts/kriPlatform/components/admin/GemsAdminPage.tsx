@@ -483,14 +483,43 @@ export default function GemsAdminPage({ context }: Props) {
           {/* TAB 2: Full Admin Dashboard, Executive Involvement Queue, OKRs & Scoring */}
           {tab === 2 && (
             <Stack spacing={3}>
-              {executiveRequests.length > 0 && (
-                <Paper sx={{ p: 2.5, borderRadius: 3, border: '1px solid #DDD6FE', background: '#F5F3FF' }}>
-                  <Typography sx={{ fontWeight: 900, color: '#4C1D95', mb: 0.5 }}>
-                    Executive Management Involvement Requests ({executiveRequests.length})
-                  </Typography>
-                  <Typography sx={{ fontSize: '0.82rem', color: '#5B21B6', mb: 2 }}>
-                    Leads where team members requested Executive Management escalation (qualification threshold: 20+ monthly company points).
-                  </Typography>
+              <Paper sx={{ p: 2.5, borderRadius: 3, border: '1px solid #DDD6FE', background: '#F5F3FF' }}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1.5} sx={{ mb: 1.5 }}>
+                  <Box>
+                    <Typography sx={{ fontWeight: 900, color: '#4C1D95', mb: 0.25 }}>
+                      Executive Management Involvement Escalation Queue ({executiveRequests.length})
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.82rem', color: '#5B21B6' }}>
+                      Leads where team members requested Executive Management escalation (qualification threshold: 20+ monthly company points).
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => navigate('/gems/actions')}
+                      sx={{ fontWeight: 700, borderRadius: 1.5, textTransform: 'none', borderColor: '#7C3AED', color: '#6D28D9' }}
+                    >
+                      Open Approval Actions
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => navigate('/gems/agencies')}
+                      sx={{ fontWeight: 700, borderRadius: 1.5, textTransform: 'none', borderColor: '#7C3AED', color: '#6D28D9' }}
+                    >
+                      Browse Companies
+                    </Button>
+                  </Stack>
+                </Stack>
+
+                {executiveRequests.length === 0 ? (
+                  <Box sx={{ p: 2, borderRadius: 2, background: '#FFFFFF', border: '1px dashed #C4B5FD' }}>
+                    <Typography sx={{ fontSize: '0.82rem', color: '#4C1D95', fontWeight: 600 }}>
+                      No pending Executive Management Involvement requests right now. When an employee checks &ldquo;Request executive management involvement&rdquo; on a qualified company (20+ monthly points), it appears here with direct links to the stakeholder, company, and approval action.
+                    </Typography>
+                  </Box>
+                ) : (
                   <Stack spacing={1.25}>
                     {executiveRequests.map((reqItem) => (
                       <Paper
@@ -498,8 +527,8 @@ export default function GemsAdminPage({ context }: Props) {
                         elevation={0}
                         sx={{ p: 1.75, borderRadius: 2, border: '1px solid #C4B5FD', background: '#FFFFFF' }}
                       >
-                        <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
-                          <Box>
+                        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={1.5}>
+                          <Box sx={{ minWidth: 0, flex: 1 }}>
                             <Typography sx={{ fontWeight: 800, color: '#0F172A', fontSize: '0.92rem' }}>
                               {reqItem.ClientName} · {reqItem.CompanyName || reqItem.Agency}
                             </Typography>
@@ -510,17 +539,47 @@ export default function GemsAdminPage({ context }: Props) {
                               {reqItem.Notes || reqItem.Justification}
                             </Typography>
                           </Box>
-                          <Chip
-                            label={reqItem.ReviewStatus}
-                            size="small"
-                            sx={{ fontWeight: 800, background: '#EDE9FE', color: '#6D28D9' }}
-                          />
+                          <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                            <Chip
+                              label={reqItem.ReviewStatus}
+                              size="small"
+                              sx={{ fontWeight: 800, background: '#EDE9FE', color: '#6D28D9' }}
+                            />
+                            {reqItem.ClientID && (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => navigate(`/gems/stakeholders/${reqItem.ClientID}`)}
+                                sx={{ fontWeight: 700, fontSize: '0.72rem', borderRadius: 1.5, textTransform: 'none' }}
+                              >
+                                Stakeholder
+                              </Button>
+                            )}
+                            {(reqItem.CompanyKey || reqItem.CompanyName) && (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => navigate(`/gems/agencies/${encodeURIComponent((reqItem.CompanyKey || reqItem.CompanyName).toLowerCase())}`)}
+                                sx={{ fontWeight: 700, fontSize: '0.72rem', borderRadius: 1.5, textTransform: 'none' }}
+                              >
+                                Company
+                              </Button>
+                            )}
+                            <Button
+                              size="small"
+                              variant="contained"
+                              onClick={() => setTab(0)}
+                              sx={{ fontWeight: 700, fontSize: '0.72rem', borderRadius: 1.5, textTransform: 'none', background: '#6D28D9' }}
+                            >
+                              Review &amp; Validate
+                            </Button>
+                          </Stack>
                         </Stack>
                       </Paper>
                     ))}
                   </Stack>
-                </Paper>
-              )}
+                )}
+              </Paper>
 
               <GemsOkrSection interactions={interactions} />
 
@@ -530,9 +589,10 @@ export default function GemsAdminPage({ context }: Props) {
                 initialUsers={users}
                 initialInteractions={interactions}
                 initialAutomations={automations}
-                title="Administrator Engagement & Scoring Workspace"
-                description="Log, assign, and score stakeholder interactions across any employee, entity, and organisation."
+                title="Administrator Engagement & Entity Scoring Overview"
+                description="Executive entity target allocations, category distribution, 100-point leaderboard, and open follow-ups."
                 showLeaderboard
+                hideLogForm
               />
             </Stack>
           )}

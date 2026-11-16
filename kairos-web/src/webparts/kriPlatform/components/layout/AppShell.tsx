@@ -735,6 +735,7 @@ export default function AppShell({
               >
                 <Button
                   size="small"
+                  startIcon={<AccountCircleIcon sx={{ fontSize: 15 }} />}
                   onClick={() => switchKairosMode('user')}
                   sx={{
                     borderRadius: 1.5,
@@ -747,10 +748,11 @@ export default function AppShell({
                     boxShadow: viewMode === 'user' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
                   }}
                 >
-                  👤 User
+                  User
                 </Button>
                 <Button
                   size="small"
+                  startIcon={<SecurityIcon sx={{ fontSize: 15 }} />}
                   onClick={() => switchKairosMode('admin')}
                   sx={{
                     borderRadius: 1.5,
@@ -763,7 +765,7 @@ export default function AppShell({
                     boxShadow: viewMode === 'admin' ? '0 2px 8px rgba(103,87,239,0.28)' : 'none',
                   }}
                 >
-                  🛡 Admin
+                  Admin
                 </Button>
               </Box>
             </Box>

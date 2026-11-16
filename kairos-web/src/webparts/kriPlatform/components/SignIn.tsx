@@ -18,6 +18,8 @@ import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ContentPasteRoundedIcon from '@mui/icons-material/ContentPasteRounded';
+import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
+import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
 import airosLogo from '../assets/AIROS_Logo.png';
 import konstructumLogo from '../assets/konstructum-logo.png';
 import { ALLOWED_EMAIL_DOMAINS, isAllowedEmail } from '../services/allowedDomains';
@@ -443,8 +445,8 @@ export default function SignIn() {
                     }}
                   >
                     {([
-                      { key: 'user', label: '👤 User Workspace' },
-                      { key: 'admin', label: '🛡 Admin Workspace' },
+                      { key: 'user', label: 'User Workspace', icon: <PersonOutlineIcon sx={{ fontSize: 16 }} /> },
+                      { key: 'admin', label: 'Admin Workspace', icon: <ShieldOutlinedIcon sx={{ fontSize: 16 }} /> },
                     ] as const).map((opt) => {
                       const active = roleIntent === opt.key;
                       return (
@@ -452,6 +454,7 @@ export default function SignIn() {
                           key={opt.key}
                           type="button"
                           size="small"
+                          startIcon={opt.icon}
                           onClick={() => setRoleIntent(opt.key)}
                           sx={{
                             py: 0.75,

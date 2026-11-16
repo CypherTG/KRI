@@ -598,7 +598,14 @@ export default function GemsShell({
                       {nowLabel}
                     </Typography>
                     <Chip
-                      label={viewMode === 'admin' ? '🛡 Admin Workspace' : '👤 User Workspace'}
+                      icon={
+                        viewMode === 'admin' ? (
+                          <ShieldOutlinedIcon sx={{ fontSize: '14px !important', color: '#FFFFFF !important' }} />
+                        ) : (
+                          <PersonOutlineIcon sx={{ fontSize: '14px !important', color: '#FFFFFF !important' }} />
+                        )
+                      }
+                      label={viewMode === 'admin' ? 'Admin Workspace' : 'User Workspace'}
                       size="small"
                       sx={{
                         height: 20,
