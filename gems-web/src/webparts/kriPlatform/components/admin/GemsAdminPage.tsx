@@ -47,6 +47,8 @@ import {
   GemsComplianceRecord,
   GemsInteractionRecord,
   getActionRecords,
+  createActionRecord,
+  updateActionRecord,
   getAuditLogs,
   getComplianceRecords,
   getGemsInteractions,
@@ -63,6 +65,7 @@ import GemsInteractionWorkspace from '../gems/GemsInteractionWorkspace';
 import GemsOkrSection from '../dashboard/GemsOkrSection';
 import GemsUpcomingView from '../schedule/GemsUpcomingView';
 import GemsReportDialog from '../reports/GemsReportDialog';
+import GemsScheduleMeetingDialog from '../meetings/GemsScheduleMeetingDialog';
 
 interface Props {
   context: KriContext;
@@ -146,6 +149,8 @@ export default function GemsAdminPage({ context }: Props) {
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(true);
   const [reportOpen, setReportOpen] = useState(false);
+  const [execBusyId, setExecBusyId] = useState<string | null>(null);
+  const [scheduleClient, setScheduleClient] = useState<any | null>(null);
 
   const [clients, setClients] = useState<any[]>([]);
   const [users, setUsers] = useState<IKRIUser[]>([]);
@@ -210,6 +215,49 @@ export default function GemsAdminPage({ context }: Props) {
     [actions],
   );
   const agencies = useMemo(() => buildCompanySummaries(clients), [clients]);
+
+  const handleExecSupportDecision = async (
+    reqItem: GemsInteractionRecord,
+    nextStatus: 'InProgress' | 'Completed',
+  ) => {
+    setExecBusyId(`${reqItem.ID}-${nextStatus}`);
+    try {
+      const existingAction = actions.find(
+        (a) =>
+          a.ActionType === 'Approval'
+          && a.Source === 'Interaction'
+          && String(a.SourceId) === String(reqItem.ID),
+      );
+      if (existingAction) {
+        await updateActionRecord(context, existingAction.ID, {
+          status: nextStatus,
+          outcome:
+            nextStatus === 'Completed'
+              ? 'Executive Management support completed.'
+              : 'Executive Management step-in approved.',
+        });
+      } else {
+        const created = await createActionRecord(context, {
+          entityType: 'Stakeholder',
+          entityId: String(reqItem.ClientID || ''),
+          entityName: `${reqItem.ClientName} (${reqItem.CompanyName || reqItem.Agency})`,
+          actionType: 'Approval',
+          priority: 'High',
+          dueDate: new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10),
+          assignedTo: 'Executive Management',
+          description: `Executive Support for ${reqItem.ClientName} (${reqItem.CompanyName || reqItem.Agency})`,
+          source: 'Interaction',
+          sourceId: String(reqItem.ID),
+        });
+        if (nextStatus === 'Completed' || nextStatus === 'InProgress') {
+          await updateActionRecord(context, created.ID, { status: nextStatus });
+        }
+      }
+      loadAll();
+    } finally {
+      setExecBusyId(null);
+    }
+  };
 
   const handleExportAdminCsv = () => {
     const lines = ['GEMS Administrator Executive Export'];
@@ -283,6 +331,16 @@ export default function GemsAdminPage({ context }: Props) {
       </Box>
 
       <GemsReportDialog context={context} open={reportOpen} onClose={() => setReportOpen(false)} />
+      <GemsScheduleMeetingDialog
+        context={context}
+        open={Boolean(scheduleClient)}
+        onClose={() => setScheduleClient(null)}
+        onSaved={() => {
+          setScheduleClient(null);
+          loadAll();
+        }}
+        fixedClient={scheduleClient}
+      />
 
       {/* Pending Review Alert */}
       {pendingReviews.length > 0 && (
@@ -421,100 +479,156 @@ export default function GemsAdminPage({ context }: Props) {
           {/* TAB 2: Full Admin Dashboard, Executive Involvement Queue, OKRs & Scoring */}
           {tab === 2 && (
             <Stack spacing={3}>
-              <Paper sx={{ p: 2.5, borderRadius: 3, border: '1px solid #DDD6FE', background: '#F5F3FF' }}>
+              <Paper sx={{ p: 2.5, borderRadius: 3, border: '1px solid #E2E8F0', background: '#FFFFFF' }}>
                 <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1.5} sx={{ mb: 1.5 }}>
                   <Box>
-                    <Typography sx={{ fontWeight: 900, color: '#4C1D95', mb: 0.25 }}>
-                      Executive Management Involvement Escalation Queue ({executiveRequests.length})
+                    <Typography sx={{ fontWeight: 900, fontSize: '1rem', color: '#0F172A', mb: 0.35 }}>
+                      Executive Support Requests ({executiveRequests.length})
                     </Typography>
-                    <Typography sx={{ fontSize: '0.82rem', color: '#5B21B6' }}>
-                      Leads where team members requested Executive Management escalation (qualification threshold: 20+ monthly company points).
+                    <Typography sx={{ fontSize: '0.82rem', color: '#475569', lineHeight: 1.5 }}>
+                      <strong>What this is:</strong> When a team member reaches <strong>20+ monthly points</strong> with a company, they can request <strong>Executive Management (CEO / Directors)</strong> to step in and help close a high-level approval or partnership.
                     </Typography>
                   </Box>
-                  <Stack direction="row" spacing={1}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => navigate('/gems/actions')}
-                      sx={{ fontWeight: 700, borderRadius: 1.5, textTransform: 'none', borderColor: '#7C3AED', color: '#6D28D9' }}
-                    >
-                      Open Approval Actions
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => navigate('/gems/agencies')}
-                      sx={{ fontWeight: 700, borderRadius: 1.5, textTransform: 'none', borderColor: '#7C3AED', color: '#6D28D9' }}
-                    >
-                      Browse Companies
-                    </Button>
-                  </Stack>
                 </Stack>
 
                 {executiveRequests.length === 0 ? (
-                  <Box sx={{ p: 2, borderRadius: 2, background: '#FFFFFF', border: '1px dashed #C4B5FD' }}>
-                    <Typography sx={{ fontSize: '0.82rem', color: '#4C1D95', fontWeight: 600 }}>
-                      No pending Executive Management Involvement requests right now. When an employee checks &ldquo;Request executive management involvement&rdquo; on a qualified company (20+ monthly points), it appears here with direct links to the stakeholder, company, and approval action.
+                  <Box sx={{ p: 2, borderRadius: 2, background: '#F8FAFC', border: '1px dashed #CBD5E1' }}>
+                    <Typography sx={{ fontSize: '0.82rem', color: '#475569', fontWeight: 500 }}>
+                      No Executive Support requests have been submitted yet. Once a team member checks &ldquo;Request Executive Support&rdquo; on a qualified company, it will appear here so you can approve executive step-in or schedule an executive meeting.
                     </Typography>
                   </Box>
                 ) : (
                   <Stack spacing={1.25}>
-                    {executiveRequests.map((reqItem) => (
-                      <Paper
-                        key={reqItem.ID}
-                        elevation={0}
-                        sx={{ p: 1.75, borderRadius: 2, border: '1px solid #C4B5FD', background: '#FFFFFF' }}
-                      >
-                        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={1.5}>
-                          <Box sx={{ minWidth: 0, flex: 1 }}>
-                            <Typography sx={{ fontWeight: 800, color: '#0F172A', fontSize: '0.92rem' }}>
-                              {reqItem.ClientName} · {reqItem.CompanyName || reqItem.Agency}
-                            </Typography>
-                            <Typography sx={{ fontSize: '0.78rem', color: '#64748B' }}>
-                              Requested by {reqItem.TargetUser || reqItem.LoggedBy} · {reqItem.BusinessArm} · {reqItem.Category} ({reqItem.Points} pts)
-                            </Typography>
-                            <Typography sx={{ fontSize: '0.8rem', color: '#334155', mt: 0.5 }}>
-                              {reqItem.Notes || reqItem.Justification}
-                            </Typography>
-                          </Box>
-                          <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
-                            <Chip
-                              label={reqItem.ReviewStatus}
-                              size="small"
-                              sx={{ fontWeight: 800, background: '#EDE9FE', color: '#6D28D9' }}
-                            />
-                            {reqItem.ClientID && (
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                onClick={() => navigate(`/gems/stakeholders/${reqItem.ClientID}`)}
-                                sx={{ fontWeight: 700, fontSize: '0.72rem', borderRadius: 1.5, textTransform: 'none' }}
-                              >
-                                Stakeholder
-                              </Button>
-                            )}
-                            {(reqItem.CompanyKey || reqItem.CompanyName) && (
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                onClick={() => navigate(`/gems/agencies/${encodeURIComponent((reqItem.CompanyKey || reqItem.CompanyName).toLowerCase())}`)}
-                                sx={{ fontWeight: 700, fontSize: '0.72rem', borderRadius: 1.5, textTransform: 'none' }}
-                              >
-                                Company
-                              </Button>
-                            )}
-                            <Button
-                              size="small"
-                              variant="contained"
-                              onClick={() => setTab(0)}
-                              sx={{ fontWeight: 700, fontSize: '0.72rem', borderRadius: 1.5, textTransform: 'none', background: '#6D28D9' }}
-                            >
-                              Review &amp; Validate
-                            </Button>
+                    {executiveRequests.map((reqItem) => {
+                      const isInteractionValidated = reqItem.ReviewStatus === 'Validated';
+                      const linkedAction = actions.find(
+                        (a) =>
+                          a.ActionType === 'Approval'
+                          && a.Source === 'Interaction'
+                          && String(a.SourceId) === String(reqItem.ID),
+                      );
+                      const execStatus = linkedAction?.Status || 'Open';
+                      const isExecApproved = execStatus === 'InProgress';
+                      const isExecCompleted = execStatus === 'Completed';
+                      const targetClient = clients.find((c) => String(c.ID) === String(reqItem.ClientID)) || null;
+
+                      return (
+                        <Paper
+                          key={reqItem.ID}
+                          elevation={0}
+                          sx={{ p: 2, borderRadius: 2, border: '1px solid #E2E8F0', background: '#F8FAFC' }}
+                        >
+                          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={1.5}>
+                            <Box sx={{ minWidth: 0, flex: 1 }}>
+                              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                                <Typography
+                                  onClick={() => reqItem.ClientID && navigate(`/gems/stakeholders/${reqItem.ClientID}`)}
+                                  sx={{
+                                    fontWeight: 800,
+                                    color: reqItem.ClientID ? '#2563EB' : '#0F172A',
+                                    fontSize: '0.92rem',
+                                    cursor: reqItem.ClientID ? 'pointer' : 'default',
+                                    '&:hover': reqItem.ClientID ? { textDecoration: 'underline' } : {},
+                                  }}
+                                >
+                                  {reqItem.ClientName} · {reqItem.CompanyName || reqItem.Agency}
+                                </Typography>
+                                <Chip
+                                  label={
+                                    isExecCompleted
+                                      ? 'Executive Support Completed'
+                                      : isExecApproved
+                                        ? 'Executive Step-In Approved'
+                                        : isInteractionValidated
+                                          ? 'Awaiting Executive Step-In'
+                                          : 'Awaiting Submission Review'
+                                  }
+                                  size="small"
+                                  sx={{
+                                    height: 22,
+                                    fontSize: '0.7rem',
+                                    fontWeight: 800,
+                                    background: isExecCompleted
+                                      ? '#DCFCE7'
+                                      : isExecApproved
+                                        ? '#E0F2FE'
+                                        : '#FEF3C7',
+                                    color: isExecCompleted
+                                      ? '#166534'
+                                      : isExecApproved
+                                        ? '#0369A1'
+                                        : '#92400E',
+                                  }}
+                                />
+                              </Stack>
+                              <Typography sx={{ fontSize: '0.78rem', color: '#64748B', mt: 0.35 }}>
+                                Requested by <strong>{reqItem.TargetUser || reqItem.LoggedBy}</strong> · Entity: {reqItem.BusinessArm} · Classification: {reqItem.FinalClassification || reqItem.Category} ({reqItem.Points} pts)
+                              </Typography>
+                              <Typography sx={{ fontSize: '0.8rem', color: '#334155', mt: 0.6 }}>
+                                {reqItem.Notes || reqItem.Justification}
+                              </Typography>
+                            </Box>
+
+                            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                              {!isInteractionValidated ? (
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  color="warning"
+                                  onClick={() => setTab(0)}
+                                  sx={{ fontWeight: 700, fontSize: '0.74rem', borderRadius: 1.5, textTransform: 'none' }}
+                                >
+                                  1. Validate Submission First
+                                </Button>
+                              ) : (
+                                <>
+                                  {!isExecApproved && !isExecCompleted && (
+                                    <Button
+                                      size="small"
+                                      variant="contained"
+                                      disabled={execBusyId === `${reqItem.ID}-InProgress`}
+                                      onClick={() => void handleExecSupportDecision(reqItem, 'InProgress')}
+                                      sx={{
+                                        fontWeight: 700,
+                                        fontSize: '0.74rem',
+                                        borderRadius: 1.5,
+                                        textTransform: 'none',
+                                        background: '#0F766E',
+                                        '&:hover': { background: '#115E59' },
+                                      }}
+                                    >
+                                      Approve Executive Support
+                                    </Button>
+                                  )}
+                                  {!isExecCompleted && targetClient && (
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      onClick={() => setScheduleClient(targetClient)}
+                                      sx={{ fontWeight: 700, fontSize: '0.74rem', borderRadius: 1.5, textTransform: 'none' }}
+                                    >
+                                      Schedule Executive Meeting
+                                    </Button>
+                                  )}
+                                  {!isExecCompleted && (
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      color="success"
+                                      disabled={execBusyId === `${reqItem.ID}-Completed`}
+                                      onClick={() => void handleExecSupportDecision(reqItem, 'Completed')}
+                                      sx={{ fontWeight: 700, fontSize: '0.74rem', borderRadius: 1.5, textTransform: 'none' }}
+                                    >
+                                      Mark Completed
+                                    </Button>
+                                  )}
+                                </>
+                              )}
+                            </Stack>
                           </Stack>
-                        </Stack>
-                      </Paper>
-                    ))}
+                        </Paper>
+                      );
+                    })}
                   </Stack>
                 )}
               </Paper>

@@ -833,57 +833,39 @@ export default function GemsInteractionWorkspace({
               onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
             />
 
-            <Alert
-              severity={executiveThresholdMet ? 'success' : 'warning'}
-              sx={{ borderRadius: 2 }}
-              action={
-                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-                  {selectedClient?.ID && (
-                    <Button
-                      size="small"
-                      color="inherit"
-                      variant="outlined"
-                      onClick={() => navigate(`/gems/stakeholders/${selectedClient.ID}`)}
-                      sx={{ fontWeight: 700, fontSize: '0.72rem', borderRadius: 1.5, textTransform: 'none', whiteSpace: 'nowrap' }}
-                    >
-                      Open Stakeholder
-                    </Button>
-                  )}
-                  {selectedClient?.CompanyName && (
-                    <Button
-                      size="small"
-                      color="inherit"
-                      variant="outlined"
-                      onClick={() => navigate(`/gems/agencies/${encodeURIComponent(normalizeLookupKey(selectedClient.CompanyName))}`)}
-                      sx={{ fontWeight: 700, fontSize: '0.72rem', borderRadius: 1.5, textTransform: 'none', whiteSpace: 'nowrap' }}
-                    >
-                      Open Company
-                    </Button>
-                  )}
-                  <Button
-                    size="small"
-                    color="inherit"
-                    variant="outlined"
-                    onClick={() => navigate('/gems/actions')}
-                    sx={{ fontWeight: 700, fontSize: '0.72rem', borderRadius: 1.5, textTransform: 'none', whiteSpace: 'nowrap' }}
-                  >
-                    Escalation Queue
-                  </Button>
-                </Stack>
-              }
+            <Box
+              sx={{
+                p: 1.75,
+                borderRadius: 2,
+                background: executiveThresholdMet ? '#F0FDF4' : '#F8FAFC',
+                border: `1px solid ${executiveThresholdMet ? '#BBF7D0' : '#E2E8F0'}`,
+              }}
             >
-              Executive management involvement may be requested after lead qualification (20+ monthly company points). Current company monthly points for <strong>{selectedClient?.CompanyName || 'selected company'}</strong>: <strong>{selectedCompanyMonthPoints}/20 pts</strong>.
-            </Alert>
-
-            <FormControlLabel
-              control={(
-                <Checkbox
-                  checked={form.executiveInvolvementRequested}
-                  onChange={(event) => setForm((current) => ({ ...current, executiveInvolvementRequested: event.target.checked }))}
-                />
-              )}
-              label="Request executive management involvement"
-            />
+              <FormControlLabel
+                sx={{ m: 0, alignItems: 'flex-start' }}
+                control={(
+                  <Checkbox
+                    size="small"
+                    disabled={!executiveThresholdMet}
+                    checked={executiveThresholdMet && form.executiveInvolvementRequested}
+                    onChange={(event) => setForm((current) => ({ ...current, executiveInvolvementRequested: event.target.checked }))}
+                    sx={{ pt: 0, mr: 1 }}
+                  />
+                )}
+                label={(
+                  <Box>
+                    <Typography sx={{ fontWeight: 800, fontSize: '0.84rem', color: '#0F172A' }}>
+                      Request Executive Support ({selectedCompanyMonthPoints}/20 monthly company pts)
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.76rem', color: '#475569', mt: 0.25, lineHeight: 1.5 }}>
+                      {executiveThresholdMet
+                        ? `Qualified for ${selectedClient?.CompanyName || 'this company'}. Check this box if you need Executive Management (CEO / Directors) to step in and help advance or close this relationship.`
+                        : `Unlocks once your team reaches 20 monthly points with ${selectedClient?.CompanyName || 'this company'} (currently ${selectedCompanyMonthPoints}/20 pts).`}
+                    </Typography>
+                  </Box>
+                )}
+              />
+            </Box>
 
             <FormControlLabel
               control={(
