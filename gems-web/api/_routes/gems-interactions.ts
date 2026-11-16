@@ -193,6 +193,17 @@ export default methodGuard(['GET', 'POST', 'PATCH', 'DELETE'], async (req, res) 
       ? requestedStatus
       : 'Submitted';
 
+    const repMonth = optionalString(body.reportingMonth ?? body.ReportingMonth, 20) || '';
+    const compPointsRow = await rawOne<{ pts: number }>(
+      `SELECT COALESCE(SUM(points), 0)::int AS pts
+         FROM gems_interactions
+        WHERE lower(coalesce(company_key, company_name, '')) = lower($1)
+          AND ($2 = '' OR reporting_month = $2)`,
+      [companyName, repMonth],
+    ).catch(() => ({ pts: 0 }));
+    const companyMonthlyPoints = (compPointsRow?.pts ?? 0) + CATEGORY_POINTS[category];
+    const allowExecSupport = body.executiveInvolvementRequested === true && companyMonthlyPoints >= 20;
+
     const row = await rawOne<any>(
       `INSERT INTO gems_interactions (
          client_id, client_name, company_key, company_name, agency, business_arm,
@@ -225,14 +236,14 @@ export default methodGuard(['GET', 'POST', 'PATCH', 'DELETE'], async (req, res) 
         optionalString(body.justification ?? body.Justification, 20000),
         initialStatus,
         toDateOnly(body.weekStart ?? body.WeekStart),
-        optionalString(body.reportingMonth ?? body.ReportingMonth, 20),
+        repMonth || null,
         user.displayName,
         user.id,
         optionalString(body.targetUser ?? body.TargetUser, 200),
         optionalString(body.targetUserId ?? body.TargetUserId, 100),
         optionalString(body.kriClassification ?? body.KRIClassification, 100),
-        body.executiveInvolvementRequested === true,
-        Number(body.executiveMonthlyPointsAtLog || 0),
+        allowExecSupport,
+        companyMonthlyPoints,
         body.followUpRequired === true,
         toDateOnly(body.followUpDate ?? body.FollowUpDate),
         toDateOnly(body.scheduledDate ?? body.ScheduledDate),
