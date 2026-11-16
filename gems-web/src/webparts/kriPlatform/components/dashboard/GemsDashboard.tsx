@@ -174,53 +174,27 @@ export default function GemsDashboard({ context }: Props) {
 
   return (
     <Box sx={{ px: 3.5, pb: 3.5 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
-        <Box>
-          {effectiveIsAdmin && (
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              <Button
-                size="small"
-                variant="contained"
-                startIcon={<ShieldOutlinedIcon />}
-                onClick={() => navigate('/gems/admin')}
-                sx={{ fontWeight: 800, borderRadius: 2, background: '#0F766E', '&:hover': { background: '#115E59' } }}
-              >
-                Open Dedicated Admin Page
-              </Button>
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<RateReviewIcon />}
-                onClick={() => navigate('/gems/review')}
-                sx={{ fontWeight: 800, borderRadius: 2, borderColor: '#0F766E', color: '#0F766E' }}
-              >
-                Review &amp; Classify ({opsSummary?.pendingReview || 0} Pending)
-              </Button>
-            </Box>
-          )}
-        </Box>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mb: 2 }}>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<FileDownloadIcon />}
+          onClick={handleExport}
+          sx={{ fontWeight: 700, borderRadius: 2 }}
+        >
+          Export (CSV + PDF)
+        </Button>
+        {effectiveIsAdmin && (
           <Button
             size="small"
-            variant="outlined"
-            startIcon={<FileDownloadIcon />}
-            onClick={handleExport}
+            variant="contained"
+            startIcon={<AssessmentIcon />}
+            onClick={() => setReportOpen(true)}
             sx={{ fontWeight: 700, borderRadius: 2 }}
           >
-            Export (CSV + PDF)
+            Generate Report
           </Button>
-          {effectiveIsAdmin && (
-            <Button
-              size="small"
-              variant="contained"
-              startIcon={<AssessmentIcon />}
-              onClick={() => setReportOpen(true)}
-              sx={{ fontWeight: 700, borderRadius: 2 }}
-            >
-              Generate Report
-            </Button>
-          )}
-        </Box>
+        )}
       </Box>
       <GemsReportDialog context={context} open={reportOpen} onClose={() => setReportOpen(false)} />
 

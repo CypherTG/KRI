@@ -123,7 +123,7 @@ const SUPPORT_NAV: NavItem[] = [
   },
 ];
 
-function routeLabel(pathname: string, viewMode: GemsViewMode): string {
+function routeLabel(pathname: string): string {
   if (pathname === '/gems/admin') return 'Administrator Command Center';
   if (pathname.startsWith('/gems/stakeholders/')) return 'Stakeholder workspace';
   if (pathname.startsWith('/gems/agencies/')) return 'Agency workspace';
@@ -136,7 +136,7 @@ function routeLabel(pathname: string, viewMode: GemsViewMode): string {
   if (pathname === '/gems/profile') return 'My profile';
   if (pathname === '/gems/help') return 'Help center';
   if (pathname === '/gems/settings') return 'GEMS workspace settings';
-  return viewMode === 'admin' ? 'GEMS Dashboard (Admin View)' : 'GEMS Dashboard (User View)';
+  return 'GEMS dashboard';
 }
 
 function routeSummary(pathname: string): string {
@@ -291,7 +291,7 @@ export default function GemsShell({
     || 'GEMS User';
   const userEmail = context.pageContext.user.email || context.pageContext.user.loginName || 'No email';
   const userInitials = initialsFromDisplayName(displayName);
-  const currentLabel = useMemo(() => routeLabel(location.pathname, viewMode), [location.pathname, viewMode]);
+  const currentLabel = useMemo(() => routeLabel(location.pathname), [location.pathname]);
   const currentSummary = useMemo(() => routeSummary(location.pathname), [location.pathname]);
   const nowLabel = new Date().toLocaleDateString('en-GB', {
     weekday: 'short',
@@ -584,39 +584,19 @@ export default function GemsShell({
                   <MenuIcon />
                 </IconButton>
                 <Box sx={{ minWidth: 0 }}>
-                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.6 }}>
-                    <Typography
-                      sx={{
-                        fontFamily: '"JetBrains Mono", monospace',
-                        fontSize: '0.68rem',
-                        fontWeight: 600,
-                        color: '#5EEAD4',
-                        letterSpacing: '0.12em',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      {nowLabel}
-                    </Typography>
-                    <Chip
-                      icon={
-                        viewMode === 'admin' ? (
-                          <ShieldOutlinedIcon sx={{ fontSize: '14px !important', color: '#FFFFFF !important' }} />
-                        ) : (
-                          <PersonOutlineIcon sx={{ fontSize: '14px !important', color: '#FFFFFF !important' }} />
-                        )
-                      }
-                      label={viewMode === 'admin' ? 'Admin Workspace' : 'User Workspace'}
-                      size="small"
-                      sx={{
-                        height: 20,
-                        fontSize: '0.66rem',
-                        fontWeight: 800,
-                        background: viewMode === 'admin' ? 'rgba(45,212,191,0.22)' : 'rgba(255,255,255,0.14)',
-                        color: '#FFFFFF',
-                        border: '1px solid rgba(94,234,212,0.35)',
-                      }}
-                    />
-                  </Stack>
+                  <Typography
+                    sx={{
+                      fontFamily: '"JetBrains Mono", monospace',
+                      fontSize: '0.68rem',
+                      fontWeight: 600,
+                      color: '#5EEAD4',
+                      letterSpacing: '0.12em',
+                      textTransform: 'uppercase',
+                      mb: 0.6,
+                    }}
+                  >
+                    {nowLabel}
+                  </Typography>
                   <Typography
                     sx={{
                       fontSize: { xs: '1.4rem', md: '1.7rem' },
@@ -642,85 +622,42 @@ export default function GemsShell({
                 </Box>
               </Stack>
 
-              <Stack spacing={1.25} alignItems="flex-end">
-                {isAccountAdmin && (
-                  <Stack direction="row" spacing={1}>
-                    <Button
-                      size="small"
-                      variant={viewMode === 'user' ? 'contained' : 'outlined'}
-                      startIcon={<PersonOutlineIcon sx={{ fontSize: 16 }} />}
-                      onClick={() => handleModeSwitch('user')}
-                      sx={{
-                        textTransform: 'none',
-                        fontWeight: 800,
-                        fontSize: '0.76rem',
-                        borderRadius: 2,
-                        color: '#FFFFFF',
-                        borderColor: 'rgba(255,255,255,0.3)',
-                        background: viewMode === 'user' ? '#0284C7' : 'rgba(255,255,255,0.08)',
-                        '&:hover': { background: viewMode === 'user' ? '#0369A1' : 'rgba(255,255,255,0.16)' },
-                      }}
-                    >
-                      Use as User
-                    </Button>
-                    <Button
-                      size="small"
-                      variant={viewMode === 'admin' ? 'contained' : 'outlined'}
-                      startIcon={<ShieldOutlinedIcon sx={{ fontSize: 16 }} />}
-                      onClick={() => handleModeSwitch('admin')}
-                      sx={{
-                        textTransform: 'none',
-                        fontWeight: 800,
-                        fontSize: '0.76rem',
-                        borderRadius: 2,
-                        color: '#FFFFFF',
-                        borderColor: 'rgba(94,234,212,0.5)',
-                        background: viewMode === 'admin' ? '#0D9488' : 'rgba(255,255,255,0.08)',
-                        '&:hover': { background: viewMode === 'admin' ? '#0F766E' : 'rgba(255,255,255,0.16)' },
-                      }}
-                    >
-                      Use as Admin
-                    </Button>
-                  </Stack>
-                )}
-
-                <Paper
-                  elevation={0}
+              <Paper
+                elevation={0}
+                sx={{
+                  display: { xs: 'none', md: 'block' },
+                  minWidth: 230,
+                  maxWidth: 340,
+                  p: 1.5,
+                  borderRadius: 2.2,
+                  border: '1px solid rgba(94, 234, 212, 0.26)',
+                  background: 'rgba(9, 24, 36, 0.48)',
+                  backdropFilter: 'blur(10px)',
+                }}
+              >
+                <Typography
                   sx={{
-                    display: { xs: 'none', md: 'block' },
-                    minWidth: 230,
-                    maxWidth: 340,
-                    p: 1.5,
-                    borderRadius: 2.2,
-                    border: '1px solid rgba(94, 234, 212, 0.26)',
-                    background: 'rgba(9, 24, 36, 0.48)',
-                    backdropFilter: 'blur(10px)',
+                    fontFamily: '"JetBrains Mono", monospace',
+                    fontSize: '0.64rem',
+                    fontWeight: 600,
+                    color: '#5EEAD4',
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
                   }}
                 >
-                  <Typography
-                    sx={{
-                      fontFamily: '"JetBrains Mono", monospace',
-                      fontSize: '0.64rem',
-                      fontWeight: 600,
-                      color: '#5EEAD4',
-                      letterSpacing: '0.1em',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Operating Principle
-                  </Typography>
-                  <Typography
-                    sx={{
-                      mt: 0.5,
-                      fontSize: '0.76rem',
-                      lineHeight: 1.5,
-                      color: 'rgba(241, 245, 249, 0.88)',
-                    }}
-                  >
-                    GEMS scores classified engagement outcomes globally across all synced KAIROS contacts and agencies.
-                  </Typography>
-                </Paper>
-              </Stack>
+                  Operating Principle
+                </Typography>
+                <Typography
+                  sx={{
+                    mt: 0.5,
+                    fontSize: '0.76rem',
+                    lineHeight: 1.5,
+                    color: 'rgba(241, 245, 249, 0.88)',
+                  }}
+                >
+                  GEMS scores classified engagement outcomes globally across all synced KAIROS contacts and agencies.
+                </Typography>
+              </Paper>
             </Stack>
           </Paper>
 

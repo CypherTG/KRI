@@ -260,89 +260,27 @@ export default function GemsAdminPage({ context }: Props) {
 
   return (
     <Box sx={{ px: { xs: 1, md: 2 }, pb: 4 }}>
-      {/* Top Admin Command Bar */}
-      <Paper
-        elevation={0}
-        sx={{
-          p: 2.5,
-          mb: 3,
-          borderRadius: 3,
-          border: '1px solid #CBD5E1',
-          background: 'linear-gradient(135deg, #F8FAFC 0%, #EFF6FF 100%)',
-        }}
-      >
-        <Stack
-          direction={{ xs: 'column', md: 'row' }}
-          justifyContent="space-between"
-          alignItems={{ xs: 'flex-start', md: 'center' }}
-          spacing={2}
+      {/* Top Action Bar */}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mb: 2.5, flexWrap: 'wrap' }}>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<FileDownloadIcon />}
+          onClick={handleExportAdminCsv}
+          sx={{ fontWeight: 700, borderRadius: 2 }}
         >
-          <Stack direction="row" spacing={1.5} alignItems="center">
-            <Box
-              sx={{
-                width: 44,
-                height: 44,
-                borderRadius: 2.5,
-                background: '#0F766E',
-                color: '#FFFFFF',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <ShieldOutlinedIcon />
-            </Box>
-            <Box>
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Typography sx={{ fontWeight: 900, fontSize: '1.15rem', color: '#0F172A' }}>
-                  GEMS Administrator &amp; Reviewer Command Center
-                </Typography>
-                <Chip
-                  label="Admin Mode Active"
-                  size="small"
-                  sx={{ fontWeight: 800, fontSize: '0.7rem', background: '#0F766E', color: '#FFFFFF' }}
-                />
-              </Stack>
-              <Typography sx={{ fontSize: '0.82rem', color: '#475569', mt: 0.25 }}>
-                Validate and reclassify employee interactions, oversee entity 100-point targets, and manage follow-up &amp; compliance governance.
-              </Typography>
-            </Box>
-          </Stack>
-
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<PersonOutlineIcon />}
-              onClick={() => {
-                setViewMode('user');
-                navigate('/gems/dashboard');
-              }}
-              sx={{ fontWeight: 700, borderRadius: 2, borderColor: '#64748B', color: '#334155' }}
-            >
-              Switch to User View
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<FileDownloadIcon />}
-              onClick={handleExportAdminCsv}
-              sx={{ fontWeight: 700, borderRadius: 2 }}
-            >
-              Export Admin (CSV + PDF)
-            </Button>
-            <Button
-              size="small"
-              variant="contained"
-              startIcon={<AssessmentIcon />}
-              onClick={() => setReportOpen(true)}
-              sx={{ fontWeight: 700, borderRadius: 2, background: '#0F766E', '&:hover': { background: '#115E59' } }}
-            >
-              Executive BAM Report
-            </Button>
-          </Stack>
-        </Stack>
-      </Paper>
+          Export Admin (CSV + PDF)
+        </Button>
+        <Button
+          size="small"
+          variant="contained"
+          startIcon={<AssessmentIcon />}
+          onClick={() => setReportOpen(true)}
+          sx={{ fontWeight: 700, borderRadius: 2, background: '#0F766E', '&:hover': { background: '#115E59' } }}
+        >
+          Executive BAM Report
+        </Button>
+      </Box>
 
       <GemsReportDialog context={context} open={reportOpen} onClose={() => setReportOpen(false)} />
 
