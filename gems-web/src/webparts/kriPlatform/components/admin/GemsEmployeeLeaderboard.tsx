@@ -32,6 +32,7 @@ import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import { useNavigate } from 'react-router-dom';
 import { GemsInteractionRecord, GEMS_CATEGORY_POINTS } from '../../services/gemsApi';
+import { downloadCsv } from '../../utils/exportCsv';
 import { IKRIUser } from '../../services/graphApi';
 import { userDisplayName } from '../../utils/lookupHelpers';
 
@@ -336,15 +337,22 @@ export default function GemsEmployeeLeaderboard({ users, interactions, onJumpToR
       });
     });
 
-    const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `gems-employee-leaderboard-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const totalPointsAll = ladderRows.reduce((sum, r) => sum + r.totalPoints, 0);
+    const totalValidatedAll = ladderRows.reduce((sum, r) => sum + r.validatedPoints, 0);
+    const totalSubsAll = ladderRows.reduce((sum, r) => sum + r.totalSubmissions, 0);
+
+    downloadCsv(`gems-employee-leaderboard-${new Date().toISOString().slice(0, 10)}.csv`, lines, {
+      title: 'GEMS Employee Leaderboard & Submissions',
+      subtitle: 'Employee rankings toward the 100-point monthly target and detailed per-submission scoring breakdown.',
+      platform: 'GEMS',
+      metrics: [
+        { label: 'Employees Tracked', value: ladderRows.length },
+        { label: 'Total Submissions', value: totalSubsAll },
+        { label: 'Total GEMS Points', value: `${totalPointsAll} pts` },
+        { label: 'Validated Points', value: `${totalValidatedAll} pts` },
+        { label: 'Top Performer', value: ladderRows[0]?.name || '-' },
+      ],
+    });
   };
 
   const rankBadge = (index: number) => {
@@ -431,7 +439,7 @@ export default function GemsEmployeeLeaderboard({ users, interactions, onJumpToR
                 '&:hover': { background: '#115E59' },
               }}
             >
-              Export Leaderboard CSV
+              Export Leaderboard (CSV + PDF)
             </Button>
           </Stack>
         </Stack>

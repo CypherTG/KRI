@@ -81,7 +81,7 @@ export default function GemsAgencyList({ context }: Props) {
             }}
           />
           <Button size="small" variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExport} sx={{ fontWeight: 700, borderRadius: 2 }}>
-            Export CSV
+            Export (CSV + PDF)
           </Button>
         </Box>
       </Box>

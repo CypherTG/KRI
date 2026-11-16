@@ -9,6 +9,7 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import { getGemsInteractions, GemsInteractionRecord } from '../../services/gemsApi';
 import { getComplianceRecords, GemsComplianceRecord, getActionRecords, GemsActionRecord } from '../../services/gemsApi';
+import { downloadCsv, ExportTableSection } from '../../utils/exportCsv';
 
 interface Props {
   context: KriContext;
@@ -132,36 +133,100 @@ export default function GemsReportDialog({ context, open, onClose }: Props) {
       const monthLabel = selectedMonth || 'All';
       const yearLabel = selectedYear || 'All';
 
+      const combinedLines: string[] = [
+        `GEMS Executive BAM Report (${monthLabel} ${yearLabel})`,
+        `Generated,${new Date().toISOString()}`,
+        '',
+        'Metric,Value',
+        `Interactions Included,${filteredInteractions.length}`,
+        `Total Points,${filteredInteractions.reduce((s, i) => s + Number(i.Points || 0), 0)}`,
+        `Compliance Records,${filteredCompliance.length}`,
+        `Action Items,${filteredActions.length}`,
+      ];
+
+      const sections: ExportTableSection[] = [];
+      const additionalCsvFiles: Array<{ filename: string; content: string }> = [];
+
       if (modulesList.includes('interactions')) {
-        const headers = ['ID', 'Title', 'Client Name', 'Company', 'Agency', 'Business Arm', 'Interaction Type', 'Category', 'Final Classification', 'Points', 'Review Status', 'Reporting Month', 'Logged By', 'Logged At', 'Target User', 'KRI Stage', 'Follow Up Required', 'Follow Up Date'];
+        const headers = ['Client Name', 'Company', 'Agency', 'Entity', 'Type', 'Category', 'Points', 'Status', 'Target User', 'Follow Up Date'];
         const rows = filteredInteractions.map((i) => [
-          i.ID, i.Title, i.ClientName, i.CompanyName, i.Agency, i.BusinessArm,
-          i.InteractionType, i.Category, i.FinalClassification, String(i.Points),
-          i.ReviewStatus, i.ReportingMonth, i.LoggedBy, i.LoggedAt, i.TargetUser,
-          i.KRIClassification, String(i.FollowUpRequired), i.FollowUpDate,
+          i.ClientName || i.Title || '',
+          i.CompanyName || '',
+          i.Agency || '',
+          i.BusinessArm || '',
+          i.InteractionType || '',
+          i.FinalClassification || i.Category || '',
+          String(i.Points || 0),
+          i.ReviewStatus || '',
+          i.TargetUser || i.LoggedBy || '',
+          i.FollowUpDate ? String(i.FollowUpDate).slice(0, 10) : '',
         ]);
-        downloadFile(toCsv([headers, ...rows]), `GEMS_Interactions_${monthLabel}_${yearLabel}_${dateStr}.csv`, 'text/csv');
+        const csvText = toCsv([headers, ...rows]);
+        combinedLines.push('', 'Interactions', ...csvText.split('\r\n'));
+        sections.push({ title: 'Stakeholder Interactions & Scoring', headers, rows });
+        if (modulesList.length > 1) {
+          additionalCsvFiles.push({
+            filename: `GEMS_Interactions_${monthLabel}_${yearLabel}_${dateStr}.csv`,
+            content: csvText,
+          });
+        }
       }
 
       if (modulesList.includes('compliance')) {
-        const headers = ['ID', 'Title', 'Compliance Type', 'Governing Body', 'Entity Name', 'Status', 'Expiry Date', 'Renewal Date', 'Issue Date', 'Reference Number'];
+        const headers = ['Title', 'Compliance Type', 'Governing Body', 'Entity Name', 'Status', 'Expiry Date', 'Renewal Date', 'Reference Number'];
         const rows = filteredCompliance.map((c) => [
-          c.ID, c.Title, c.ComplianceType, c.GoverningBody, c.EntityName, c.Status,
-          c.ExpiryDate, c.RenewalDate, c.IssueDate, c.ReferenceNumber || '',
+          c.Title || '',
+          c.ComplianceType || '',
+          c.GoverningBody || '',
+          c.EntityName || '',
+          c.Status || '',
+          c.ExpiryDate ? String(c.ExpiryDate).slice(0, 10) : '',
+          c.RenewalDate ? String(c.RenewalDate).slice(0, 10) : '',
+          c.ReferenceNumber || '',
         ]);
-        downloadFile(toCsv([headers, ...rows]), `GEMS_Compliance_${monthLabel}_${yearLabel}_${dateStr}.csv`, 'text/csv');
+        const csvText = toCsv([headers, ...rows]);
+        combinedLines.push('', 'Compliance', ...csvText.split('\r\n'));
+        sections.push({ title: 'Regulatory Compliance & Permits', headers, rows });
+        if (modulesList.length > 1) {
+          additionalCsvFiles.push({
+            filename: `GEMS_Compliance_${monthLabel}_${yearLabel}_${dateStr}.csv`,
+            content: csvText,
+          });
+        }
       }
 
       if (modulesList.includes('actions')) {
-        const headers = ['ID', 'Title', 'Entity Name', 'Entity Type', 'Assigned To', 'Status', 'Due Date', 'Priority', 'Action Type'];
+        const headers = ['Title', 'Entity Name', 'Entity Type', 'Assigned To', 'Status', 'Due Date', 'Priority', 'Action Type'];
         const rows = filteredActions.map((a) => [
-          a.ID, a.Title, a.EntityName || '', a.EntityType || '', a.AssignedTo || '',
-          a.Status, a.DueDate, a.Priority || '', a.ActionType || '',
+          a.Title || '',
+          a.EntityName || '',
+          a.EntityType || '',
+          a.AssignedTo || '',
+          a.Status || '',
+          a.DueDate ? String(a.DueDate).slice(0, 10) : '',
+          a.Priority || '',
+          a.ActionType || '',
         ]);
-        downloadFile(toCsv([headers, ...rows]), `GEMS_Actions_${monthLabel}_${yearLabel}_${dateStr}.csv`, 'text/csv');
+        const csvText = toCsv([headers, ...rows]);
+        combinedLines.push('', 'Actions', ...csvText.split('\r\n'));
+        sections.push({ title: 'Action Items & Follow-Ups', headers, rows });
+        if (modulesList.length > 1) {
+          additionalCsvFiles.push({
+            filename: `GEMS_Actions_${monthLabel}_${yearLabel}_${dateStr}.csv`,
+            content: csvText,
+          });
+        }
       }
 
-      setSuccess(`Exported ${modulesList.join(', ')} report(s) successfully.`);
+      downloadCsv(`GEMS_Report_${monthLabel}_${yearLabel}_${dateStr}.csv`, combinedLines, {
+        title: `GEMS Executive BAM Report (${monthLabel} ${yearLabel})`,
+        subtitle: `Includes ${modulesList.join(', ')} data in CSV format plus this At-A-Glance PDF overview.`,
+        platform: 'GEMS',
+        sections,
+        additionalCsvFiles,
+      });
+
+      setSuccess(`Exported ZIP bundle (CSV + At-A-Glance PDF) for ${modulesList.join(', ')} successfully.`);
     } catch (err: any) {
       setError(err?.message || 'Failed to export report.');
     } finally {

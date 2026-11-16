@@ -105,7 +105,7 @@ export default function GemsActionsPage({ context }: Props) {
           </Typography>
         </Typography>
         <Stack direction="row" spacing={1}>
-          <Button size="small" variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExport} sx={{ fontWeight: 700, borderRadius: 2 }}>Export CSV</Button>
+          <Button size="small" variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExport} sx={{ fontWeight: 700, borderRadius: 2 }}>Export (CSV + PDF)</Button>
           <Button variant="outlined" size="small" startIcon={<RefreshIcon />} onClick={fetchRecords}>Refresh</Button>
           <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>Add Action</Button>
         </Stack>

@@ -121,7 +121,7 @@ export default function GemsStakeholderList({ context }: Props) {
             Schedule Meeting
           </Button>
           <Button size="small" variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExport} sx={{ fontWeight: 700, borderRadius: 2 }}>
-            Export CSV
+            Export (CSV + PDF)
           </Button>
         </Stack>
       </Box>

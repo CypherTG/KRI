@@ -14,6 +14,7 @@ import { KriContext } from '../../../../types/kri';
 import { getAutomations, getClients, getKRIUsers, IAutomation, IKRIUser, getComms } from '../../services/graphApi';
 import { getGemsInteractions, GemsInteractionRecord, getComplianceRecords, GemsComplianceRecord, getActionRecords, GemsActionRecord, GemsOperationalSummary, getStakeholderHealth, StakeholderHealth } from '../../services/gemsApi';
 import { filterGemsEligibleClients } from '../../utils/gemsScope';
+import { downloadCsv } from '../../utils/exportCsv';
 import { useGemsViewMode } from '../../utils/gemsRbac';
 import { useNavigate } from 'react-router-dom';
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
@@ -162,15 +163,11 @@ export default function GemsDashboard({ context }: Props) {
     agencies.forEach((a) => {
       lines.push(`"${a.name}",${a.totalContacts},${a.knowledge},${a.rapport},${a.intimacy}`);
     });
-    const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `gems-dashboard-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadCsv(`gems-dashboard-${new Date().toISOString().slice(0, 10)}.csv`, lines, {
+      title: 'GEMS Executive Dashboard Report',
+      subtitle: 'At-a-glance summary of global stakeholders, agencies, compliance obligations, and engagement metrics.',
+      platform: 'GEMS',
+    });
   }, [clients, interactions, followUpSummary, opsSummary]);
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>;
@@ -210,7 +207,7 @@ export default function GemsDashboard({ context }: Props) {
             onClick={handleExport}
             sx={{ fontWeight: 700, borderRadius: 2 }}
           >
-            Quick CSV
+            Export (CSV + PDF)
           </Button>
           {effectiveIsAdmin && (
             <Button

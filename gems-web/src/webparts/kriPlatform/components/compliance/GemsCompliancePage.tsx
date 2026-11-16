@@ -93,7 +93,7 @@ export default function GemsCompliancePage({ context }: Props) {
           <Typography component="span" sx={{ fontSize: '0.85rem', color: '#7B8FA6', ml: 1, fontWeight: 600 }}>({filtered.length} of {records.length})</Typography>
         </Typography>
         <Stack direction="row" spacing={1}>
-          <Button size="small" variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExport} sx={{ fontWeight: 700, borderRadius: 2 }}>Export CSV</Button>
+          <Button size="small" variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExport} sx={{ fontWeight: 700, borderRadius: 2 }}>Export (CSV + PDF)</Button>
           <Button variant="outlined" size="small" startIcon={<RefreshIcon />} onClick={fetchRecords}>Refresh</Button>
           <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>Add Record</Button>
         </Stack>
