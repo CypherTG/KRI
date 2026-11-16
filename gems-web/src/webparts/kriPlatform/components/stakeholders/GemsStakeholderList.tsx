@@ -110,10 +110,10 @@ export default function GemsStakeholderList({ context }: Props) {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, gap: 2, flexWrap: 'wrap' }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 800, color: '#1A1D23', mb: 0.25 }}>
-            Government Stakeholder Registry
+            Global Stakeholder Registry
           </Typography>
           <Typography sx={{ fontSize: '0.83rem', color: '#7B8FA6', fontWeight: 500 }}>
-            Synced government stakeholders from {gemsClients.length > 0 ? Array.from(new Set(gemsClients.map((c) => c.CompanyName).filter(Boolean))).length : 0} agencies
+            {gemsClients.length} synced stakeholders across {gemsClients.length > 0 ? Array.from(new Set(gemsClients.map((c) => c.CompanyName).filter(Boolean))).length : 0} agencies & organisations
           </Typography>
         </Box>
         <Stack direction="row" spacing={1}>

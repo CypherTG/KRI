@@ -150,18 +150,13 @@ export default methodGuard(['GET', 'POST', 'PATCH', 'DELETE'], async (req, res) 
 
     const rows = await raw<any>(
       `SELECT i.* FROM gems_interactions i
-        ${clientId || companyKey ? '' : `JOIN clients c ON c.id = i.client_id`}
         WHERE ${where}
         ORDER BY i.logged_at DESC
         LIMIT 500`,
       params,
     );
 
-    const visible = clientId || companyKey
-      ? rows
-      : rows.filter((row) => normalizeGemsAgency(row.company_name || row.company_key || ''));
-
-    return sendJson(res, 200, { interactions: visible.map(mapGemsInteraction) });
+    return sendJson(res, 200, { interactions: rows.map(mapGemsInteraction) });
   }
 
   if (req.method === 'POST') {
@@ -178,10 +173,11 @@ export default methodGuard(['GET', 'POST', 'PATCH', 'DELETE'], async (req, res) 
       clientParams,
     );
     if (!client) {
-      throw new HttpError(400, 'That contact is not in GEMS scope. GEMS covers the monitored agencies only.');
+      throw new HttpError(404, 'Stakeholder contact not found in registry.');
     }
 
-    const agency = resolveAgencyOrThrow(client.company_name);
+    const requestedAgency = optionalString(body.agency ?? body.Agency, 200);
+    const agency = normalizeGemsAgency(requestedAgency || client.company_name) || resolveAgencyOrThrow(client.company_name);
     const category = String(body.category ?? body.Category ?? 'Pearl');
     if (!CATEGORY_POINTS[category]) {
       throw new HttpError(400, 'Category must be Crown Jewel, Pearl, Coral, or Ruby.');

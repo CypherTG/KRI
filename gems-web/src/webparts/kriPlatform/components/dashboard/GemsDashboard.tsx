@@ -207,8 +207,8 @@ export default function GemsDashboard({ context }: Props) {
       )}
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2.5, mb: 3.5 }}>
-        <StatBox icon={<PeopleIcon sx={{ fontSize: 22, color: '#477BFF' }} />} label="Government Stakeholders" value={stats?.stakeholders || 0} color="#477BFF" />
-        <StatBox icon={<BusinessIcon sx={{ fontSize: 22, color: '#00BFA5' }} />} label="Agencies" value={stats?.agencies || 0} color="#00BFA5" />
+        <StatBox icon={<PeopleIcon sx={{ fontSize: 22, color: '#477BFF' }} />} label="Global Stakeholders" value={stats?.stakeholders || 0} color="#477BFF" />
+        <StatBox icon={<BusinessIcon sx={{ fontSize: 22, color: '#00BFA5' }} />} label="Agencies & Companies" value={stats?.agencies || 0} color="#00BFA5" />
         <StatBox icon={<StarsIcon sx={{ fontSize: 22, color: '#FF7043' }} />} label="GEMS Interactions" value={stats?.interactions || 0} color="#FF7043" />
       </Box>
 

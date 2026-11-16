@@ -110,8 +110,8 @@ const SUPPORT_NAV: NavItem[] = [
 function routeLabel(pathname: string): string {
   if (pathname.startsWith('/gems/stakeholders/')) return 'Stakeholder workspace';
   if (pathname.startsWith('/gems/agencies/')) return 'Agency workspace';
-  if (pathname === '/gems/stakeholders') return 'Government Stakeholders';
-  if (pathname === '/gems/agencies') return 'Government Agencies';
+  if (pathname === '/gems/stakeholders') return 'Global Stakeholders';
+  if (pathname === '/gems/agencies') return 'Agencies & Organisations';
   if (pathname === '/gems/compliance') return 'Compliance Tracking';
   if (pathname === '/gems/actions') return 'Action Items';
   if (pathname === '/gems/schedule') return 'Calendar & Scheduling';
@@ -125,8 +125,8 @@ function routeLabel(pathname: string): string {
 function routeSummary(pathname: string): string {
   if (pathname.startsWith('/gems/stakeholders/')) return 'Classify engagements and track government stakeholder relationships.';
   if (pathname.startsWith('/gems/agencies/')) return 'Review agency-level engagement data, stakeholder rosters, and reference documents.';
-  if (pathname === '/gems/stakeholders') return 'GEMS-eligible stakeholders synced from the KRI consolidated registry for NUPRC, NUIMS, NCDMB, NEPL, NNPC, NIMASA, ENSERV, and NMDPRA.';
-  if (pathname === '/gems/agencies') return 'Browse government agencies grouped by stakeholder coverage and engagement maturity.';
+  if (pathname === '/gems/stakeholders') return 'All stakeholders synced globally from the KAIROS consolidated contact registry across agencies and partner organisations.';
+  if (pathname === '/gems/agencies') return 'Browse regulatory agencies and partner organisations grouped by stakeholder coverage and engagement maturity.';
   if (pathname === '/gems/schedule') return 'Calendar view of scheduled meetings, compliance expiry and renewal dates, action item deadlines, and follow-up dates across all GEMS modules.';
   if (pathname === '/gems/compliance') return 'Track permits, licences, obligations, certificates, and regulatory filings with expiry alerts and status monitoring.';
   if (pathname === '/gems/actions') return 'Manage action items, tasks, follow-ups, and reminders linked to stakeholders, agencies, and compliance records.';

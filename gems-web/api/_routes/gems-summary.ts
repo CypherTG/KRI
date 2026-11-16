@@ -3,26 +3,24 @@ import { methodGuard, sendJson } from '../_lib/http.js';
 import { raw, rawOne } from '../_lib/db.js';
 import { gemsScopeSql, GEMS_ALLOWED_AGENCIES, normalizeGemsAgency } from '../_lib/gemsScope.js';
 import { mapClient, CLIENT_PERSON_COLUMNS, CLIENT_JOINS } from '../_lib/mappers.js';
-import { mapGemsInteraction, mapGemsCompliance, mapGemsAction } from '../_lib/gemsMappers.js';
+import { mapGemsInteraction, mapGemsCompliance } from '../_lib/gemsMappers.js';
 
 /**
- * GEMS operational summary and notifications.
+ * GEMS operational summary and notifications (Global Scope).
  *
  *   GET /api/gems/summary
  *   GET /api/gems/stakeholders
  *   GET /api/gems/agencies
  *   GET /api/gems/notifications
  *
- * The stakeholder and agency lists read the SAME `clients` table KAIROS uses,
- * filtered to the eight monitored agencies in SQL. GEMS never maintains its own
- * copy: add a contact in KAIROS at NNPC and it is a GEMS stakeholder
- * immediately, with no sync step and no chance of the two drifting apart.
+ * Reads the shared `clients` table that KAIROS uses globally so every contact
+ * submitted in KAIROS is immediately available in GEMS.
  */
 export default methodGuard(['GET'], async (req, res) => {
   const user = await requireSession(req);
   const path = String(req.url || '');
 
-  // ── Stakeholders: the shared contact registry, restricted to GEMS agencies ──
+  // ── Stakeholders: the shared global contact registry ──
   if (path.includes('/stakeholders')) {
     const params: any[] = [];
     const rows = await raw<any>(
@@ -30,17 +28,17 @@ export default methodGuard(['GET'], async (req, res) => {
          FROM clients c
          ${CLIENT_JOINS}
         WHERE ${gemsScopeSql('c', params)}
-        ORDER BY c.company_name NULLS LAST, c.last_name NULLS LAST`,
+        ORDER BY c.date_registered DESC NULLS LAST, c.id DESC`,
       params,
     );
     return sendJson(res, 200, {
       stakeholders: rows.map(mapClient),
       agencies: GEMS_ALLOWED_AGENCIES,
-      scope: `GEMS covers ${GEMS_ALLOWED_AGENCIES.join(', ')}`,
+      scope: 'Global (all KAIROS contacts & agencies)',
     });
   }
 
-  // ── Agencies: group the same scoped contacts by resolved agency ──
+  // ── Agencies & Organisations: group all contacts by resolved agency / company ──
   if (path.includes('/agencies')) {
     const params: any[] = [];
     const rows = await raw<any>(
@@ -52,28 +50,35 @@ export default methodGuard(['GET'], async (req, res) => {
       params,
     );
 
-    const byAgency = new Map<string, any[]>();
-    for (const row of rows) {
-      const agency = normalizeGemsAgency(row.company_name || '') || 'Unmatched';
-      if (!byAgency.has(agency)) byAgency.set(agency, []);
-      byAgency.get(agency)!.push(mapClient(row));
+    const byAgency = new Map<string, { name: string; clients: any[] }>();
+    // Seed the 8 priority regulators first so they always appear even if 0 contacts
+    for (const reg of GEMS_ALLOWED_AGENCIES) {
+      byAgency.set(reg.toLowerCase(), { name: reg, clients: [] });
     }
 
-    // Include the monitored agencies that currently have nobody, so the agency
-    // page shows the full remit rather than only the agencies that happen to
-    // have contacts today.
-    const agencies = GEMS_ALLOWED_AGENCIES.map((agency) => {
-      const clients = byAgency.get(agency) || [];
-      return {
-        key: agency.toLowerCase(),
-        name: agency,
-        totalContacts: clients.length,
-        knowledge: clients.filter((c) => c.KRIStage === 'Knowledge').length,
-        rapport: clients.filter((c) => c.KRIStage === 'Rapport').length,
-        intimacy: clients.filter((c) => c.KRIStage === 'Intimacy').length,
-        clients,
-      };
-    });
+    for (const row of rows) {
+      const resolved = normalizeGemsAgency(row.company_name || '') || String(row.company_name || '').trim() || 'Unassigned';
+      const key = resolved.toLowerCase();
+      if (!byAgency.has(key)) {
+        byAgency.set(key, { name: resolved, clients: [] });
+      }
+      byAgency.get(key)!.clients.push(mapClient(row));
+    }
+
+    const agencies = Array.from(byAgency.entries())
+      .map(([key, entry]) => {
+        const { name, clients } = entry;
+        return {
+          key,
+          name,
+          totalContacts: clients.length,
+          knowledge: clients.filter((c) => c.KRIStage === 'Knowledge').length,
+          rapport: clients.filter((c) => c.KRIStage === 'Rapport').length,
+          intimacy: clients.filter((c) => c.KRIStage === 'Intimacy').length,
+          clients,
+        };
+      })
+      .sort((a, b) => b.totalContacts - a.totalContacts || a.name.localeCompare(b.name));
 
     return sendJson(res, 200, { agencies, totalAgencies: agencies.length });
   }
@@ -89,10 +94,6 @@ export default methodGuard(['GET'], async (req, res) => {
       [user.id],
     );
 
-    // Anything explicitly marked Expired always surfaces, whatever its date, plus
-    // anything within 60 days of expiry. The original filtered to
-    // Active/ExpiringSoon by status AND a date window, which hid a lapsed record
-    // whose expiry date had not yet been reached.
     const expiring = await raw<any>(
       `SELECT * FROM gems_compliance
         WHERE status = 'Expired'
@@ -130,9 +131,6 @@ export default methodGuard(['GET'], async (req, res) => {
   const agencyParams: any[] = [];
   const scope = gemsScopeSql('c', agencyParams);
 
-  const interactionParams: any[] = [];
-  const interactionScope = gemsScopeSql('c', interactionParams);
-
   const agencyGroupParams: any[] = [];
   const agencyGroupScope = gemsScopeSql('c', agencyGroupParams);
 
@@ -147,11 +145,8 @@ export default methodGuard(['GET'], async (req, res) => {
     rawOne<any>(`SELECT count(*)::int AS total FROM clients c WHERE ${scope}`, agencyParams),
     raw<any>(
       `SELECT i.* FROM gems_interactions i
-         JOIN clients c ON c.id = i.client_id
-        WHERE ${interactionScope}
         ORDER BY i.logged_at DESC
         LIMIT 500`,
-      interactionParams,
     ),
     rawOne<any>(
       `SELECT count(*)::int AS total FROM gems_interactions WHERE review_status IN ('Submitted','Pending Review')`,
@@ -228,10 +223,6 @@ export default methodGuard(['GET'], async (req, res) => {
   const completedActions = actionRows.filter((row) => row.status === 'Completed').length;
 
   return sendJson(res, 200, {
-    // Flat, matching the original `GemsOperationalSummary` contract: the
-    // dashboard reads `summary.totalCompliance`, not `summary.stats.…`. Kept
-    // flat at the source so there is a single shape rather than one the client
-    // has to reshape.
     totalStakeholders: stakeholderCount?.total || 0,
     totalInteractions: interactionRows.length,
     totalPoints: interactionRows.reduce((sum, row) => sum + Number(row.points || 0), 0),
@@ -260,6 +251,6 @@ export default methodGuard(['GET'], async (req, res) => {
     })),
     recentInteractions: interactionRows.slice(0, 20).map(mapGemsInteraction),
     recentCompliance: complianceRows.slice(0, 20).map(mapGemsCompliance),
-    scope: `GEMS covers ${GEMS_ALLOWED_AGENCIES.join(', ')}`,
+    scope: 'Global (all KAIROS contacts & agencies)',
   });
 });

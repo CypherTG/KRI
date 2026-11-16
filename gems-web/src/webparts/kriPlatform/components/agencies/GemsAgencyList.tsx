@@ -63,10 +63,10 @@ export default function GemsAgencyList({ context }: Props) {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, gap: 2, flexWrap: 'wrap' }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 800, color: '#1A1D23', mb: 0.25 }}>
-            Government Agencies
+            Agencies &amp; Organisations
           </Typography>
           <Typography sx={{ fontSize: '0.83rem', color: '#7B8FA6', fontWeight: 500 }}>
-            {agencies.length} regulatory agencies with synced stakeholders
+            {agencies.length} agencies and organisations with synced stakeholders
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1.5 }}>

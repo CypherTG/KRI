@@ -329,11 +329,21 @@ export default function GemsInteractionWorkspace({
     [fixedClient, form.clientId, scopedClients],
   );
 
+  const agencyOptions = useMemo(() => {
+    const set = new Set<string>(AGENCIES);
+    scopedClients.forEach((c) => {
+      const resolved = normalizeGemsAgency(c.CompanyName || '');
+      if (resolved) set.add(resolved);
+      if (c.CompanyName?.trim()) set.add(c.CompanyName.trim());
+    });
+    return Array.from(set);
+  }, [scopedClients]);
+
   useEffect(() => {
-    const agency = normalizeGemsAgency(selectedClient?.CompanyName || '');
+    const agency = normalizeGemsAgency(selectedClient?.CompanyName || '') || selectedClient?.CompanyName || '';
     if (!agency) return;
-    setForm((current) => current.agency ? current : { ...current, agency });
-  }, [selectedClient?.CompanyName]);
+    setForm((current) => ({ ...current, agency }));
+  }, [selectedClient?.ID, selectedClient?.CompanyName]);
 
   const refresh = async () => {
     setLoading(true);
@@ -750,7 +760,7 @@ export default function GemsInteractionWorkspace({
 
               <Autocomplete
                 freeSolo
-                options={AGENCIES}
+                options={agencyOptions}
                 value={form.agency || null}
                 inputValue={form.agency}
                 onChange={(_, newValue) => setForm((current) => ({ ...current, agency: typeof newValue === 'string' ? newValue : newValue || '' }))}
