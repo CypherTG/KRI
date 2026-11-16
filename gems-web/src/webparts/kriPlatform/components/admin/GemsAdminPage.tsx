@@ -18,6 +18,7 @@ import {
   Typography,
 } from '@mui/material';
 import RateReviewIcon from '@mui/icons-material/RateReview';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import DashboardCustomizeIcon from '@mui/icons-material/DashboardCustomize';
 import HealthAndSafetyIcon from '@mui/icons-material/HealthAndSafety';
 import HistoryEduIcon from '@mui/icons-material/HistoryEdu';
@@ -56,6 +57,7 @@ import { filterGemsEligibleClients } from '../../utils/gemsScope';
 import { buildCompanySummaries } from '../../utils/lookupHelpers';
 import { useGemsViewMode } from '../../utils/gemsRbac';
 import GemsReviewWorkspace from '../review/GemsReviewWorkspace';
+import GemsEmployeeLeaderboard from './GemsEmployeeLeaderboard';
 import GemsInteractionWorkspace from '../gems/GemsInteractionWorkspace';
 import GemsOkrSection from '../dashboard/GemsOkrSection';
 import GemsUpcomingView from '../schedule/GemsUpcomingView';
@@ -441,6 +443,11 @@ export default function GemsAdminPage({ context }: Props) {
             label={`Review & Classify (${pendingReviews.length} Pending)`}
           />
           <Tab
+            icon={<EmojiEventsIcon sx={{ fontSize: 18 }} />}
+            iconPosition="start"
+            label="Employee Leaderboard & Submissions"
+          />
+          <Tab
             icon={<DashboardCustomizeIcon sx={{ fontSize: 18 }} />}
             iconPosition="start"
             label="Admin Dashboard & Scoring"
@@ -465,8 +472,19 @@ export default function GemsAdminPage({ context }: Props) {
             </Box>
           )}
 
-          {/* TAB 1: Full Admin Dashboard, Executive Involvement Queue, OKRs & Scoring */}
+          {/* TAB 1: Employee Leaderboard & Submissions Breakdown */}
           {tab === 1 && (
+            <Box>
+              <GemsEmployeeLeaderboard
+                users={users}
+                interactions={interactions}
+                onJumpToReview={() => setTab(0)}
+              />
+            </Box>
+          )}
+
+          {/* TAB 2: Full Admin Dashboard, Executive Involvement Queue, OKRs & Scoring */}
+          {tab === 2 && (
             <Stack spacing={3}>
               {executiveRequests.length > 0 && (
                 <Paper sx={{ p: 2.5, borderRadius: 3, border: '1px solid #DDD6FE', background: '#F5F3FF' }}>
@@ -522,8 +540,8 @@ export default function GemsAdminPage({ context }: Props) {
             </Stack>
           )}
 
-          {/* TAB 2: Stakeholder Health & Upcoming Schedule */}
-          {tab === 2 && (
+          {/* TAB 3: Stakeholder Health & Upcoming Schedule */}
+          {tab === 3 && (
             <Stack spacing={3}>
               <GemsUpcomingView
                 context={context}
@@ -576,8 +594,8 @@ export default function GemsAdminPage({ context }: Props) {
             </Stack>
           )}
 
-          {/* TAB 3: Governance & Audit Trail */}
-          {tab === 3 && (
+          {/* TAB 4: Governance & Audit Trail */}
+          {tab === 4 && (
             <Box>
               <Typography sx={{ fontWeight: 900, fontSize: '1rem', color: '#0F172A', mb: 0.5 }}>
                 Platform Governance &amp; Audit Trail
