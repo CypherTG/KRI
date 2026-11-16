@@ -246,13 +246,42 @@ export async function removeOwnProfilePhoto(): Promise<void> {
  * administrator. The role is now an explicit `users.is_admin` flag set by an
  * administrator, plus the pinned founding admin address.
  */
-export function isManagementAdminUser(user: Partial<IKRIUser> | null | undefined): boolean {
+export type KairosViewMode = 'admin' | 'user';
+const KAIROS_VIEW_MODE_KEY = 'kairos.workspaceViewMode';
+export const KAIROS_VIEW_MODE_EVENT = 'kairos:view-mode-changed';
+
+export function getKairosViewMode(): KairosViewMode {
+  if (typeof window === 'undefined') return 'admin';
+  try {
+    const val = window.localStorage.getItem(KAIROS_VIEW_MODE_KEY);
+    return val === 'user' ? 'user' : 'admin';
+  } catch {
+    return 'admin';
+  }
+}
+
+export function setKairosViewMode(mode: KairosViewMode): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(KAIROS_VIEW_MODE_KEY, mode);
+    window.dispatchEvent(new CustomEvent(KAIROS_VIEW_MODE_EVENT, { detail: mode }));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function isActualManagementAdminUser(user: Partial<IKRIUser> | null | undefined): boolean {
   if (!user) return false;
   if (user.IsAdmin === true || (user as any).isAdmin === true) return true;
   const email = String((user as any).Email || (user as any).email || user.UserAccount?.Email || '').trim().toLowerCase();
   if (email && FOUNDING_ADMIN_EMAILS.includes(email)) return true;
   const account = String(user.UserAccount?.Email || user.UserAccount?.LoginName || '').trim().toLowerCase();
   return Boolean(account && FOUNDING_ADMIN_EMAILS.includes(account));
+}
+
+export function isManagementAdminUser(user: Partial<IKRIUser> | null | undefined): boolean {
+  if (!isActualManagementAdminUser(user)) return false;
+  return getKairosViewMode() === 'admin';
 }
 
 // ─── Clients ──────────────────────────────────────────────────────────────────

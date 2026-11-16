@@ -12,7 +12,7 @@ import CloudSyncIcon from '@mui/icons-material/CloudSync';
 import { KriContext, apiRequest } from '../../../../types/kri';
 import { ThemeMode } from '../../theme/theme';
 
-type HomeRoute = '/gems/dashboard' | '/gems/stakeholders' | '/gems/agencies' | '/gems/compliance' | '/gems/actions' | '/gems/schedule' | '/gems/review' | '/gems/profile' | '/gems/settings';
+type HomeRoute = '/gems/admin' | '/gems/dashboard' | '/gems/stakeholders' | '/gems/agencies' | '/gems/compliance' | '/gems/actions' | '/gems/schedule' | '/gems/review' | '/gems/profile' | '/gems/settings';
 
 interface Props {
   context: KriContext;
@@ -24,6 +24,7 @@ interface Props {
 }
 
 const HOME_OPTIONS: Array<{ value: HomeRoute; label: string; description: string }> = [
+  { value: '/gems/admin', label: 'Admin Console', description: 'Open the dedicated Administrator & Reviewer Command Center first.' },
   { value: '/gems/dashboard', label: 'Dashboard', description: 'Open the GEMS engagement workspace first.' },
   { value: '/gems/stakeholders', label: 'Stakeholders', description: 'Open the government stakeholder registry first.' },
   { value: '/gems/agencies', label: 'Agencies', description: 'Open the agency workspace first.' },

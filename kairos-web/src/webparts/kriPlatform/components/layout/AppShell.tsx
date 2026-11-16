@@ -38,7 +38,19 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import SecurityIcon from '@mui/icons-material/Security';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { KriContext } from '../../../../types/kri';
-import { getAllComms, getClients, getCurrentSiteUser, getCurrentUserPhotoUrl, getKRIUsers, isManagementAdminUser } from '../../services/graphApi';
+import {
+  getAllComms,
+  getClients,
+  getCurrentSiteUser,
+  getCurrentUserPhotoUrl,
+  getKRIUsers,
+  isManagementAdminUser,
+  isActualManagementAdminUser,
+  getKairosViewMode,
+  setKairosViewMode,
+  KairosViewMode,
+  KAIROS_VIEW_MODE_EVENT,
+} from '../../services/graphApi';
 import AirosAssistant from '../shared/AirosAssistant';
 import { useStore } from '../../store/useStore';
 import konstructumLogo from '../../assets/konstructum-logo.png';
@@ -301,8 +313,24 @@ export default function AppShell({
   const effectiveClients = useMemo(() => mergeById(storeClients, searchIndex?.clients || []), [storeClients, searchIndex?.clients]);
   const effectiveComms = useMemo(() => mergeById(storeComms, searchIndex?.comms || []), [storeComms, searchIndex?.comms]);
   const effectiveUsers = useMemo(() => mergeById(storeUsers, searchIndex?.users || []), [storeUsers, searchIndex?.users]);
-  const isAdmin = isManagementAdminUser(currentUserProfile) || isAdminAccount;
-  const isSuperadmin = (currentUserProfile?.Email || '').toLowerCase().trim() === 'mbello@konstructum.com';
+  const [viewMode, setViewModeState] = useState<KairosViewMode>(() => getKairosViewMode());
+  useEffect(() => {
+    const syncMode = () => setViewModeState(getKairosViewMode());
+    window.addEventListener(KAIROS_VIEW_MODE_EVENT, syncMode);
+    window.addEventListener('storage', syncMode);
+    return () => {
+      window.removeEventListener(KAIROS_VIEW_MODE_EVENT, syncMode);
+      window.removeEventListener('storage', syncMode);
+    };
+  }, []);
+  const hasAdminPrivilege = isActualManagementAdminUser(currentUserProfile) || isAdminAccount;
+  const isAdmin = hasAdminPrivilege && viewMode === 'admin';
+  const isSuperadmin = (currentUserProfile?.Email || context.pageContext.user.email || '').toLowerCase().trim() === 'mbello@konstructum.com';
+  const switchKairosMode = (mode: KairosViewMode) => {
+    setKairosViewMode(mode);
+    setViewModeState(mode);
+    window.location.reload();
+  };
   const approvedClientIds = useMemo(() => approvedClientIdsForRequestUser(accessRequests, siteUser || context.pageContext.user), [accessRequests, context.pageContext.user, siteUser]);
   const visibleEffectiveClients = useMemo(() => (
     effectiveClients.filter((client) => canViewClient(client, siteUser || context.pageContext.user, isAdmin, approvedClientIds))
@@ -680,6 +708,66 @@ export default function AppShell({
         </Box>
 
         <Box sx={{ flex: 1, py: 1.5, overflowY: 'auto' }}>
+          {hasAdminPrivilege && (
+            <Box sx={{ px: 2, pb: 1.5 }}>
+              <Typography
+                sx={{
+                  fontSize: '0.62rem',
+                  fontWeight: 800,
+                  color: colors.subtle,
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                  mb: 0.6,
+                }}
+              >
+                Use App As
+              </Typography>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 0.5,
+                  p: 0.4,
+                  borderRadius: 2,
+                  background: colors.surface2,
+                  border: `1px solid ${colors.border}`,
+                }}
+              >
+                <Button
+                  size="small"
+                  onClick={() => switchKairosMode('user')}
+                  sx={{
+                    borderRadius: 1.5,
+                    py: 0.5,
+                    fontWeight: 800,
+                    fontSize: '0.72rem',
+                    textTransform: 'none',
+                    background: viewMode === 'user' ? '#FFFFFF' : 'transparent',
+                    color: viewMode === 'user' ? '#1A1D23' : colors.muted,
+                    boxShadow: viewMode === 'user' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                  }}
+                >
+                  👤 User
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => switchKairosMode('admin')}
+                  sx={{
+                    borderRadius: 1.5,
+                    py: 0.5,
+                    fontWeight: 800,
+                    fontSize: '0.72rem',
+                    textTransform: 'none',
+                    background: viewMode === 'admin' ? '#6757EF' : 'transparent',
+                    color: viewMode === 'admin' ? '#FFFFFF' : colors.muted,
+                    boxShadow: viewMode === 'admin' ? '0 2px 8px rgba(103,87,239,0.28)' : 'none',
+                  }}
+                >
+                  🛡 Admin
+                </Button>
+              </Box>
+            </Box>
+          )}
           <List disablePadding>
             {NAV_ITEMS.map((item) => (
               <NavItem

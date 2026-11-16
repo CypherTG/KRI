@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { Box, CircularProgress, Typography, Paper } from '@mui/material';
+import React from 'react';
+import { Box, Typography, Paper, Button } from '@mui/material';
 import { KriContext } from '../../../../types/kri';
 import LockIcon from '@mui/icons-material/Lock';
-import { getCurrentUserRole, GemsRole, canAdmin, canManage, canEdit } from '../../utils/gemsRbac';
+import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
+import { useGemsViewMode } from '../../utils/gemsRbac';
 
 interface Props {
   context: KriContext;
@@ -12,28 +13,13 @@ interface Props {
 }
 
 export default function GemsRoleGuard({ context, requiredRole, children, fallback }: Props) {
-  const [role, setRole] = useState<GemsRole | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { isAccountAdmin, effectiveIsAdmin, setViewMode } = useGemsViewMode(context);
 
-  useEffect(() => {
-    let cancelled = false;
-    getCurrentUserRole(context).then((r) => {
-      if (!cancelled) { setRole(r); setLoading(false); }
-    }).catch(() => {
-      if (!cancelled) { setRole('readonly'); setLoading(false); }
-    });
-    return () => { cancelled = true; };
-  }, [context]);
-
-  if (loading) {
-    return <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress size={24} /></Box>;
-  }
-
-  const hasAccess = requiredRole === 'any' || (
-    requiredRole === 'admin' ? canAdmin(role || 'readonly') :
-    requiredRole === 'manager' ? canManage(role || 'readonly') :
-    requiredRole === 'contributor' ? canEdit(role || 'readonly') : false
-  );
+  const hasAccess =
+    requiredRole === 'any'
+    || requiredRole === 'contributor'
+    || (requiredRole === 'admin' && effectiveIsAdmin)
+    || (requiredRole === 'manager' && effectiveIsAdmin);
 
   if (hasAccess) return <>{children}</>;
 
@@ -42,10 +28,26 @@ export default function GemsRoleGuard({ context, requiredRole, children, fallbac
   return (
     <Paper sx={{ p: 5, borderRadius: 3, border: '1px dashed #DDE3EA', textAlign: 'center', mx: 3.5, my: 3 }}>
       <LockIcon sx={{ fontSize: 48, color: '#B0BEC5', mb: 1.5 }} />
-      <Typography sx={{ fontWeight: 700, color: '#1A1D23', mb: 0.5 }}>Access Restricted</Typography>
-      <Typography sx={{ fontSize: '0.86rem', color: '#7B8FA6', maxWidth: 420, mx: 'auto' }}>
-        This section requires {requiredRole} privileges. Contact your Government Relations team if you need access.
+      <Typography sx={{ fontWeight: 800, color: '#1A1D23', mb: 0.5 }}>
+        {isAccountAdmin ? 'Admin Workspace Mode Required' : 'Access Restricted'}
       </Typography>
+      <Typography sx={{ fontSize: '0.86rem', color: '#7B8FA6', maxWidth: 440, mx: 'auto', mb: isAccountAdmin ? 2.5 : 0 }}>
+        {isAccountAdmin
+          ? 'You are currently browsing GEMS in User Mode. Switch to Admin Mode to access the Administrator Console and Review & Classify workspace.'
+          : `This section requires ${requiredRole} privileges. Contact your Administrator if you need access.`}
+      </Typography>
+      {isAccountAdmin && (
+        <Box>
+          <Button
+            variant="contained"
+            startIcon={<ShieldOutlinedIcon />}
+            onClick={() => setViewMode('admin')}
+            sx={{ fontWeight: 800, borderRadius: 2, background: '#0F766E', '&:hover': { background: '#115E59' } }}
+          >
+            Switch to Admin Mode
+          </Button>
+        </Box>
+      )}
     </Paper>
   );
 }

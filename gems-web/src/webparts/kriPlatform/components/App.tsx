@@ -14,9 +14,11 @@ import GemsSettings from './settings/GemsSettings';
 import GemsCompliancePage from './compliance/GemsCompliancePage';
 import GemsActionsPage from './actions/GemsActionsPage';
 import GemsReviewWorkspace from './review/GemsReviewWorkspace';
+import GemsAdminPage from './admin/GemsAdminPage';
 import GemsCalendarView from './schedule/GemsCalendarView';
 import GemsErrorBoundary from './shared/GemsErrorBoundary';
 import GemsRoleGuard from './shared/GemsRoleGuard';
+import { useGemsViewMode } from '../utils/gemsRbac';
 import { getCurrentUserProfile } from '../services/graphApi';
 import { useStore } from '../store/useStore';
 import { KriContext } from '../../../types/kri';
@@ -53,6 +55,7 @@ function GemsRedirect({ base }: { base: string }) {
 
 export default function App({ context }: Props) {
   const { setCurrentUserProfile } = useStore();
+  const { effectiveIsAdmin } = useGemsViewMode(context);
   const userScope = (context.pageContext.user.email || context.pageContext.user.loginName || context.pageContext.user.displayName || 'default')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_');
@@ -63,7 +66,7 @@ export default function App({ context }: Props) {
   );
   const [homeRoute, setHomeRoute] = useState(() =>
     readStoredValue(homeStorageKey, DEFAULT_HOME_ROUTE, [
-      '/gems/dashboard', '/gems/stakeholders', '/gems/agencies', '/gems/compliance', '/gems/actions', '/gems/schedule', '/gems/review', '/gems/profile', '/gems/settings',
+      '/gems/admin', '/gems/dashboard', '/gems/stakeholders', '/gems/agencies', '/gems/compliance', '/gems/actions', '/gems/schedule', '/gems/review', '/gems/profile', '/gems/settings',
     ] as const)
   );
 
@@ -94,9 +97,10 @@ export default function App({ context }: Props) {
         <BrowserRouter>
           <GemsShell context={context}>
             <Routes>
-              <Route path='/' element={<Navigate to={homeRoute} replace />} />
+              <Route path='/' element={<Navigate to={effectiveIsAdmin ? '/gems/admin' : homeRoute} replace />} />
 
               {/* GEMS routes */}
+              <Route path='/gems/admin' element={<GemsRoleGuard context={context} requiredRole="admin"><GemsAdminPage context={context} /></GemsRoleGuard>} />
               <Route path='/gems/dashboard' element={<GemsDashboard context={context} />} />
               <Route path='/gems/stakeholders' element={<GemsStakeholderList context={context} />} />
               <Route path='/gems/stakeholders/:id' element={<GemsStakeholderDetail context={context} />} />
@@ -123,6 +127,7 @@ export default function App({ context }: Props) {
               />
 
               {/* Backward-compatible flat route redirects */}
+              <Route path='/admin' element={<Navigate to='/gems/admin' replace />} />
               <Route path='/dashboard' element={<Navigate to='/gems/dashboard' replace />} />
               <Route path='/clients' element={<Navigate to='/gems/stakeholders' replace />} />
               <Route path="/clients/:id" element={<GemsRedirect base="/gems/stakeholders" />} />

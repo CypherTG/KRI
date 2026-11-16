@@ -23,6 +23,7 @@ import konstructumLogo from '../assets/konstructum-logo.png';
 import { ALLOWED_EMAIL_DOMAINS, isAllowedEmail } from '../services/allowedDomains';
 import { familyFromEmail } from '../services/families';
 import { useAuth } from '../../../services/session';
+import { setStoredGemsViewMode, GemsViewMode } from '../utils/gemsRbac';
 
 type Mode = 'signin' | 'register';
 
@@ -58,6 +59,7 @@ export default function SignIn() {
   } = useAuth();
 
   const [mode, setMode] = useState<Mode>('signin');
+  const [roleIntent, setRoleIntent] = useState<GemsViewMode>('user');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -136,6 +138,7 @@ export default function SignIn() {
     setBusy(true);
     try {
       if (mode === 'signin') {
+        setStoredGemsViewMode(roleIntent);
         await login(email.trim(), password, token ? token.trim().toUpperCase() : undefined);
       } else {
         await register({
@@ -425,6 +428,54 @@ export default function SignIn() {
               )}
 
               {/* Email */}
+              {mode === 'signin' && (
+                <Box>
+                  <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: textMuted, mb: 0.75, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Sign in as
+                  </Typography>
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: 0.75,
+                      p: 0.5,
+                      borderRadius: 2,
+                      bgcolor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
+                      border: `1px solid ${border}`,
+                    }}
+                  >
+                    {([
+                      { key: 'user', label: '👤 User Workspace' },
+                      { key: 'admin', label: '🛡 Admin Workspace' },
+                    ] as const).map((opt) => {
+                      const active = roleIntent === opt.key;
+                      return (
+                        <Button
+                          key={opt.key}
+                          type="button"
+                          size="small"
+                          onClick={() => setRoleIntent(opt.key)}
+                          sx={{
+                            py: 0.75,
+                            borderRadius: 1.5,
+                            textTransform: 'none',
+                            fontWeight: 700,
+                            fontSize: '0.78rem',
+                            bgcolor: active ? (opt.key === 'admin' ? '#0D9488' : '#FFFFFF') : 'transparent',
+                            color: active ? (opt.key === 'admin' ? '#FFFFFF' : '#0F172A') : textMuted,
+                            boxShadow: active ? '0 2px 6px rgba(15,23,42,0.08)' : 'none',
+                            '&:hover': {
+                              bgcolor: active ? (opt.key === 'admin' ? '#0F766E' : '#FFFFFF') : alpha(textPrimary, 0.04),
+                            },
+                          }}
+                        >
+                          {opt.label}
+                        </Button>
+                      );
+                    })}
+                  </Box>
+                </Box>
+              )}
               <Box>
                 <TextField
                   inputRef={emailInputRef}

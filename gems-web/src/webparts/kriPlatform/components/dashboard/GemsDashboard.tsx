@@ -14,6 +14,10 @@ import { KriContext } from '../../../../types/kri';
 import { getAutomations, getClients, getKRIUsers, IAutomation, IKRIUser, getComms } from '../../services/graphApi';
 import { getGemsInteractions, GemsInteractionRecord, getComplianceRecords, GemsComplianceRecord, getActionRecords, GemsActionRecord, GemsOperationalSummary, getStakeholderHealth, StakeholderHealth } from '../../services/gemsApi';
 import { filterGemsEligibleClients } from '../../utils/gemsScope';
+import { useGemsViewMode } from '../../utils/gemsRbac';
+import { useNavigate } from 'react-router-dom';
+import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
+import RateReviewIcon from '@mui/icons-material/RateReview';
 import { buildCompanySummaries } from '../../utils/lookupHelpers';
 import { buildAutomationOperationalItems, buildInteractionOperationalItems, summarizeOperationalItems } from '../../utils/operations';
 import GemsInteractionWorkspace from '../gems/GemsInteractionWorkspace';
@@ -46,6 +50,8 @@ function StatBox({ icon, label, value, color }: { icon: React.ReactNode; label: 
 }
 
 export default function GemsDashboard({ context }: Props) {
+  const navigate = useNavigate();
+  const { effectiveIsAdmin } = useGemsViewMode(context);
   const [stats, setStats] = useState<{ stakeholders: number; agencies: number; interactions: number } | null>(null);
   const [opsSummary, setOpsSummary] = useState<GemsOperationalSummary | null>(null);
   const [clients, setClients] = useState<any[]>([]);
@@ -171,25 +177,53 @@ export default function GemsDashboard({ context }: Props) {
 
   return (
     <Box sx={{ px: 3.5, pb: 3.5 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mb: 2 }}>
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<FileDownloadIcon />}
-          onClick={handleExport}
-          sx={{ fontWeight: 700, borderRadius: 2 }}
-        >
-          Quick CSV
-        </Button>
-        <Button
-          size="small"
-          variant="contained"
-          startIcon={<AssessmentIcon />}
-          onClick={() => setReportOpen(true)}
-          sx={{ fontWeight: 700, borderRadius: 2 }}
-        >
-          Generate Report
-        </Button>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+        <Box>
+          {effectiveIsAdmin && (
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={<ShieldOutlinedIcon />}
+                onClick={() => navigate('/gems/admin')}
+                sx={{ fontWeight: 800, borderRadius: 2, background: '#0F766E', '&:hover': { background: '#115E59' } }}
+              >
+                Open Dedicated Admin Page
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<RateReviewIcon />}
+                onClick={() => navigate('/gems/review')}
+                sx={{ fontWeight: 800, borderRadius: 2, borderColor: '#0F766E', color: '#0F766E' }}
+              >
+                Review &amp; Classify ({opsSummary?.pendingReview || 0} Pending)
+              </Button>
+            </Box>
+          )}
+        </Box>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<FileDownloadIcon />}
+            onClick={handleExport}
+            sx={{ fontWeight: 700, borderRadius: 2 }}
+          >
+            Quick CSV
+          </Button>
+          {effectiveIsAdmin && (
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<AssessmentIcon />}
+              onClick={() => setReportOpen(true)}
+              sx={{ fontWeight: 700, borderRadius: 2 }}
+            >
+              Generate Report
+            </Button>
+          )}
+        </Box>
       </Box>
       <GemsReportDialog context={context} open={reportOpen} onClose={() => setReportOpen(false)} />
 

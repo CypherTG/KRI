@@ -73,7 +73,7 @@ test.describe('Superadmin Console & Root Security Governance', () => {
       // Deactivate temporary user
       await request.patch(`/api/superadmin?id=${tempUserId}`, {
         data: { isActive: false },
-      }).catch(() => {});
+      }).catch(() => { });
     }
   });
 });

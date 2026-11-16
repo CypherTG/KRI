@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Avatar,
   Box,
+  Button,
+  Chip,
   Divider,
   Drawer,
   IconButton,
@@ -25,11 +27,16 @@ import EventNoteIcon from '@mui/icons-material/EventNote';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import SettingsIcon from '@mui/icons-material/Settings';
 import RateReviewIcon from '@mui/icons-material/RateReview';
+import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
+import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
+import LogoutIcon from '@mui/icons-material/Logout';
 import MenuIcon from '@mui/icons-material/Menu';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { KriContext } from '../../../../types/kri';
 import { getCurrentUserPhotoUrl } from '../../services/graphApi';
+import { useGemsViewMode, GemsViewMode } from '../../utils/gemsRbac';
+import { useAuth } from '../../../../services/session';
 import konstructumLogo from '../../assets/konstructum-logo.png';
 
 const DRAWER_WIDTH = 280;
@@ -41,7 +48,22 @@ type NavItem = {
   helper: string;
 };
 
-const PRIMARY_NAV: NavItem[] = [
+const ADMIN_NAV: NavItem[] = [
+  {
+    label: 'Admin Console',
+    path: '/gems/admin',
+    icon: <ShieldOutlinedIcon />,
+    helper: 'Dedicated Admin dashboard, reviewer queue, and audit governance.',
+  },
+  {
+    label: 'Review & Classify',
+    path: '/gems/review',
+    icon: <RateReviewIcon />,
+    helper: 'Dedicated Reviewer page to validate or reclassify interactions.',
+  },
+];
+
+const USER_PRIMARY_NAV: NavItem[] = [
   {
     label: 'Dashboard',
     path: '/gems/dashboard',
@@ -52,13 +74,13 @@ const PRIMARY_NAV: NavItem[] = [
     label: 'Stakeholders',
     path: '/gems/stakeholders',
     icon: <PeopleIcon />,
-    helper: 'Government stakeholder registry and engagement history.',
+    helper: 'Global stakeholder registry and engagement history.',
   },
   {
     label: 'Agencies',
     path: '/gems/agencies',
     icon: <BusinessIcon />,
-    helper: 'Regulatory agency profiles and stakeholder rosters.',
+    helper: 'Agencies, organisations, and stakeholder rosters.',
   },
   {
     label: 'Compliance',
@@ -76,13 +98,7 @@ const PRIMARY_NAV: NavItem[] = [
     label: 'Calendar',
     path: '/gems/schedule',
     icon: <EventNoteIcon />,
-    helper: 'Monthly view of meetings, compliance deadlines, and action due dates.',
-  },
-  {
-    label: 'Review',
-    path: '/gems/review',
-    icon: <RateReviewIcon />,
-    helper: 'Review and classify pending employee interactions.',
+    helper: 'Monthly view of meetings, follow-ups, and deadlines.',
   },
   {
     label: 'My Profile',
@@ -107,7 +123,8 @@ const SUPPORT_NAV: NavItem[] = [
   },
 ];
 
-function routeLabel(pathname: string): string {
+function routeLabel(pathname: string, viewMode: GemsViewMode): string {
+  if (pathname === '/gems/admin') return 'Administrator Command Center';
   if (pathname.startsWith('/gems/stakeholders/')) return 'Stakeholder workspace';
   if (pathname.startsWith('/gems/agencies/')) return 'Agency workspace';
   if (pathname === '/gems/stakeholders') return 'Global Stakeholders';
@@ -119,17 +136,19 @@ function routeLabel(pathname: string): string {
   if (pathname === '/gems/profile') return 'My profile';
   if (pathname === '/gems/help') return 'Help center';
   if (pathname === '/gems/settings') return 'GEMS workspace settings';
-  return 'GEMS dashboard';
+  return viewMode === 'admin' ? 'GEMS Dashboard (Admin View)' : 'GEMS Dashboard (User View)';
 }
 
 function routeSummary(pathname: string): string {
-  if (pathname.startsWith('/gems/stakeholders/')) return 'Classify engagements and track government stakeholder relationships.';
+  if (pathname === '/gems/admin') return 'Dedicated Administrator workspace with integrated Reviewer queue, entity scoring oversight, stakeholder health, and audit governance.';
+  if (pathname.startsWith('/gems/stakeholders/')) return 'Classify engagements and track stakeholder relationships.';
   if (pathname.startsWith('/gems/agencies/')) return 'Review agency-level engagement data, stakeholder rosters, and reference documents.';
   if (pathname === '/gems/stakeholders') return 'All stakeholders synced globally from the KAIROS consolidated contact registry across agencies and partner organisations.';
   if (pathname === '/gems/agencies') return 'Browse regulatory agencies and partner organisations grouped by stakeholder coverage and engagement maturity.';
-  if (pathname === '/gems/schedule') return 'Calendar view of scheduled meetings, compliance expiry and renewal dates, action item deadlines, and follow-up dates across all GEMS modules.';
+  if (pathname === '/gems/schedule') return 'Calendar view of scheduled meetings, follow-up dates, compliance expiry and renewal dates, and action item deadlines.';
   if (pathname === '/gems/compliance') return 'Track permits, licences, obligations, certificates, and regulatory filings with expiry alerts and status monitoring.';
   if (pathname === '/gems/actions') return 'Manage action items, tasks, follow-ups, and reminders linked to stakeholders, agencies, and compliance records.';
+  if (pathname === '/gems/review') return 'Dedicated Reviewer workspace to validate or reclassify employee-logged interactions and dispatch email + calendar notifications.';
   if (pathname === '/gems/profile') return 'Track personal GEMS points, activity, and monthly progress toward the 100-point target.';
   if (pathname === '/gems/help') return 'Category scoring logic and usage notes for the GEMS workflow.';
   if (pathname === '/gems/settings') return 'Workspace preferences for the GEMS surface.';
@@ -205,7 +224,7 @@ function NavSection({
               primaryTypographyProps={{
                 fontWeight: 700,
                 fontSize: '0.88rem',
-                color: selected ? theme.palette.text.primary : theme.palette.text.primary,
+                color: theme.palette.text.primary,
               }}
               secondaryTypographyProps={{
                 fontSize: '0.73rem',
@@ -232,6 +251,8 @@ export default function GemsShell({
   const theme = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
+  const logout = useAuth((state) => state.logout);
+  const { isAccountAdmin, viewMode, setViewMode } = useGemsViewMode(context);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState('');
 
@@ -250,13 +271,27 @@ export default function GemsShell({
     };
   }, [context]);
 
+  const handleModeSwitch = (nextMode: GemsViewMode) => {
+    setViewMode(nextMode);
+    if (nextMode === 'admin') {
+      if (location.pathname === '/gems/dashboard') {
+        navigate('/gems/admin');
+      }
+    } else {
+      if (location.pathname === '/gems/admin' || location.pathname === '/gems/review') {
+        navigate('/gems/dashboard');
+      }
+    }
+    setMobileOpen(false);
+  };
+
   const displayName = context.pageContext.user.displayName
     || context.pageContext.user.email
     || context.pageContext.user.loginName
     || 'GEMS User';
   const userEmail = context.pageContext.user.email || context.pageContext.user.loginName || 'No email';
   const userInitials = initialsFromDisplayName(displayName);
-  const currentLabel = useMemo(() => routeLabel(location.pathname), [location.pathname]);
+  const currentLabel = useMemo(() => routeLabel(location.pathname, viewMode), [location.pathname, viewMode]);
   const currentSummary = useMemo(() => routeSummary(location.pathname), [location.pathname]);
   const nowLabel = new Date().toLocaleDateString('en-GB', {
     weekday: 'short',
@@ -293,12 +328,99 @@ export default function GemsShell({
 
       <Divider />
 
-      <Box sx={{ px: 2, py: 2.25, flex: 1, overflowY: 'auto' }}>
+      {/* Workspace Mode Switcher for Admin Accounts */}
+      {isAccountAdmin && (
+        <Box sx={{ px: 2, pt: 2, pb: 0.5 }}>
+          <Typography
+            sx={{
+              fontSize: '0.65rem',
+              fontWeight: 800,
+              color: theme.palette.text.secondary,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              mb: 0.75,
+            }}
+          >
+            Use App As
+          </Typography>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 0.6,
+              p: 0.5,
+              borderRadius: 2,
+              background: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : '#F1F5F9',
+              border: `1px solid ${theme.palette.divider}`,
+            }}
+          >
+            <Button
+              size="small"
+              onClick={() => handleModeSwitch('user')}
+              startIcon={<PersonOutlineIcon sx={{ fontSize: 16 }} />}
+              sx={{
+                borderRadius: 1.5,
+                py: 0.65,
+                fontWeight: 800,
+                fontSize: '0.75rem',
+                textTransform: 'none',
+                background: viewMode === 'user' ? '#FFFFFF' : 'transparent',
+                color: viewMode === 'user' ? '#0F172A' : theme.palette.text.secondary,
+                boxShadow: viewMode === 'user' ? '0 2px 6px rgba(15,23,42,0.08)' : 'none',
+                '&:hover': {
+                  background: viewMode === 'user' ? '#FFFFFF' : 'rgba(15,23,42,0.04)',
+                },
+              }}
+            >
+              User
+            </Button>
+            <Button
+              size="small"
+              onClick={() => handleModeSwitch('admin')}
+              startIcon={<ShieldOutlinedIcon sx={{ fontSize: 16 }} />}
+              sx={{
+                borderRadius: 1.5,
+                py: 0.65,
+                fontWeight: 800,
+                fontSize: '0.75rem',
+                textTransform: 'none',
+                background: viewMode === 'admin' ? '#0D9488' : 'transparent',
+                color: viewMode === 'admin' ? '#FFFFFF' : theme.palette.text.secondary,
+                boxShadow: viewMode === 'admin' ? '0 2px 8px rgba(13,148,136,0.28)' : 'none',
+                '&:hover': {
+                  background: viewMode === 'admin' ? '#0F766E' : 'rgba(13,148,136,0.08)',
+                },
+              }}
+            >
+              Admin
+            </Button>
+          </Box>
+        </Box>
+      )}
+
+      <Box sx={{ px: 2, py: 2, flex: 1, overflowY: 'auto' }}>
+        {isAccountAdmin && viewMode === 'admin' && (
+          <>
+            <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, color: '#0D9488', letterSpacing: '0.12em', textTransform: 'uppercase', mb: 1 }}>
+              Administration &amp; Review
+            </Typography>
+            <NavSection
+              items={ADMIN_NAV}
+              pathname={location.pathname}
+              onNavigate={(path) => {
+                navigate(path);
+                setMobileOpen(false);
+              }}
+            />
+            <Divider sx={{ my: 2 }} />
+          </>
+        )}
+
         <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, color: theme.palette.text.secondary, letterSpacing: '0.12em', textTransform: 'uppercase', mb: 1.2 }}>
-          Workspace
+          {viewMode === 'admin' ? 'Employee Workspace' : 'Workspace'}
         </Typography>
         <NavSection
-          items={PRIMARY_NAV}
+          items={USER_PRIMARY_NAV}
           pathname={location.pathname}
           onNavigate={(path) => {
             navigate(path);
@@ -339,8 +461,8 @@ export default function GemsShell({
               alt={displayName}
               imgProps={{ referrerPolicy: 'no-referrer' }}
               sx={{
-                width: 42,
-                height: 42,
+                width: 40,
+                height: 40,
                 fontWeight: 700,
                 background: 'linear-gradient(135deg, #0D9488 0%, #0284C7 100%)',
                 color: '#FFFFFF',
@@ -348,15 +470,46 @@ export default function GemsShell({
             >
               {userInitials}
             </Avatar>
-            <Box sx={{ minWidth: 0 }}>
-              <Typography noWrap sx={{ fontSize: '0.85rem', fontWeight: 700, color: theme.palette.text.primary }}>
-                {displayName}
-              </Typography>
-              <Typography noWrap sx={{ fontSize: '0.73rem', color: theme.palette.text.secondary }}>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Stack direction="row" spacing={0.75} alignItems="center">
+                <Typography noWrap sx={{ fontSize: '0.84rem', fontWeight: 700, color: theme.palette.text.primary }}>
+                  {displayName}
+                </Typography>
+                <Chip
+                  label={viewMode === 'admin' ? 'Admin' : 'User'}
+                  size="small"
+                  sx={{
+                    height: 18,
+                    fontSize: '0.62rem',
+                    fontWeight: 800,
+                    background: viewMode === 'admin' ? '#0D9488' : '#E2E8F0',
+                    color: viewMode === 'admin' ? '#FFFFFF' : '#334155',
+                  }}
+                />
+              </Stack>
+              <Typography noWrap sx={{ fontSize: '0.72rem', color: theme.palette.text.secondary }}>
                 {userEmail}
               </Typography>
             </Box>
           </Stack>
+          <Button
+            fullWidth
+            size="small"
+            onClick={() => void logout()}
+            startIcon={<LogoutIcon sx={{ fontSize: 15 }} />}
+            sx={{
+              mt: 1.25,
+              borderRadius: 1.75,
+              fontWeight: 700,
+              fontSize: '0.75rem',
+              textTransform: 'none',
+              color: theme.palette.text.secondary,
+              border: `1px solid ${theme.palette.divider}`,
+              '&:hover': { color: '#EF4444', borderColor: '#EF4444', background: 'rgba(239,68,68,0.06)' },
+            }}
+          >
+            Sign out
+          </Button>
         </Paper>
       </Box>
     </Box>
@@ -417,8 +570,8 @@ export default function GemsShell({
               boxShadow: '0 10px 28px rgba(9, 30, 44, 0.16)',
             }}
           >
-            <Stack direction="row" spacing={2.5} alignItems="center" justifyContent="space-between">
-              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0 }}>
+            <Stack direction="row" spacing={2.5} alignItems="center" justifyContent="space-between" flexWrap="wrap">
+              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
                 <IconButton
                   onClick={() => setMobileOpen(true)}
                   sx={{
@@ -431,19 +584,32 @@ export default function GemsShell({
                   <MenuIcon />
                 </IconButton>
                 <Box sx={{ minWidth: 0 }}>
-                  <Typography
-                    sx={{
-                      fontFamily: '"JetBrains Mono", monospace',
-                      fontSize: '0.68rem',
-                      fontWeight: 600,
-                      color: '#5EEAD4',
-                      letterSpacing: '0.12em',
-                      textTransform: 'uppercase',
-                      mb: 0.6,
-                    }}
-                  >
-                    {nowLabel}
-                  </Typography>
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.6 }}>
+                    <Typography
+                      sx={{
+                        fontFamily: '"JetBrains Mono", monospace',
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        color: '#5EEAD4',
+                        letterSpacing: '0.12em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {nowLabel}
+                    </Typography>
+                    <Chip
+                      label={viewMode === 'admin' ? '🛡 Admin Workspace' : '👤 User Workspace'}
+                      size="small"
+                      sx={{
+                        height: 20,
+                        fontSize: '0.66rem',
+                        fontWeight: 800,
+                        background: viewMode === 'admin' ? 'rgba(45,212,191,0.22)' : 'rgba(255,255,255,0.14)',
+                        color: '#FFFFFF',
+                        border: '1px solid rgba(94,234,212,0.35)',
+                      }}
+                    />
+                  </Stack>
                   <Typography
                     sx={{
                       fontSize: { xs: '1.4rem', md: '1.7rem' },
@@ -469,42 +635,85 @@ export default function GemsShell({
                 </Box>
               </Stack>
 
-              <Paper
-                elevation={0}
-                sx={{
-                  display: { xs: 'none', md: 'block' },
-                  minWidth: 230,
-                  maxWidth: 340,
-                  p: 1.75,
-                  borderRadius: 2.2,
-                  border: '1px solid rgba(94, 234, 212, 0.26)',
-                  background: 'rgba(9, 24, 36, 0.48)',
-                  backdropFilter: 'blur(10px)',
-                }}
-              >
-                <Typography
+              <Stack spacing={1.25} alignItems="flex-end">
+                {isAccountAdmin && (
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      size="small"
+                      variant={viewMode === 'user' ? 'contained' : 'outlined'}
+                      startIcon={<PersonOutlineIcon sx={{ fontSize: 16 }} />}
+                      onClick={() => handleModeSwitch('user')}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 800,
+                        fontSize: '0.76rem',
+                        borderRadius: 2,
+                        color: '#FFFFFF',
+                        borderColor: 'rgba(255,255,255,0.3)',
+                        background: viewMode === 'user' ? '#0284C7' : 'rgba(255,255,255,0.08)',
+                        '&:hover': { background: viewMode === 'user' ? '#0369A1' : 'rgba(255,255,255,0.16)' },
+                      }}
+                    >
+                      Use as User
+                    </Button>
+                    <Button
+                      size="small"
+                      variant={viewMode === 'admin' ? 'contained' : 'outlined'}
+                      startIcon={<ShieldOutlinedIcon sx={{ fontSize: 16 }} />}
+                      onClick={() => handleModeSwitch('admin')}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 800,
+                        fontSize: '0.76rem',
+                        borderRadius: 2,
+                        color: '#FFFFFF',
+                        borderColor: 'rgba(94,234,212,0.5)',
+                        background: viewMode === 'admin' ? '#0D9488' : 'rgba(255,255,255,0.08)',
+                        '&:hover': { background: viewMode === 'admin' ? '#0F766E' : 'rgba(255,255,255,0.16)' },
+                      }}
+                    >
+                      Use as Admin
+                    </Button>
+                  </Stack>
+                )}
+
+                <Paper
+                  elevation={0}
                   sx={{
-                    fontFamily: '"JetBrains Mono", monospace',
-                    fontSize: '0.66rem',
-                    fontWeight: 600,
-                    color: '#5EEAD4',
-                    letterSpacing: '0.1em',
-                    textTransform: 'uppercase',
+                    display: { xs: 'none', md: 'block' },
+                    minWidth: 230,
+                    maxWidth: 340,
+                    p: 1.5,
+                    borderRadius: 2.2,
+                    border: '1px solid rgba(94, 234, 212, 0.26)',
+                    background: 'rgba(9, 24, 36, 0.48)',
+                    backdropFilter: 'blur(10px)',
                   }}
                 >
-                  Operating Principle
-                </Typography>
-                <Typography
-                  sx={{
-                    mt: 0.7,
-                    fontSize: '0.79rem',
-                    lineHeight: 1.55,
-                    color: 'rgba(241, 245, 249, 0.88)',
-                  }}
-                >
-                  GEMS never creates a parallel stakeholder registry. It scores classified engagement outcomes against the shared contact records.
-                </Typography>
-              </Paper>
+                  <Typography
+                    sx={{
+                      fontFamily: '"JetBrains Mono", monospace',
+                      fontSize: '0.64rem',
+                      fontWeight: 600,
+                      color: '#5EEAD4',
+                      letterSpacing: '0.1em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Operating Principle
+                  </Typography>
+                  <Typography
+                    sx={{
+                      mt: 0.5,
+                      fontSize: '0.76rem',
+                      lineHeight: 1.5,
+                      color: 'rgba(241, 245, 249, 0.88)',
+                    }}
+                  >
+                    GEMS scores classified engagement outcomes globally across all synced KAIROS contacts and agencies.
+                  </Typography>
+                </Paper>
+              </Stack>
             </Stack>
           </Paper>
 
