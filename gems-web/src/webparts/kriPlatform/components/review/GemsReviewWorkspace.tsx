@@ -21,7 +21,7 @@ import { sendClassificationNotification } from '../../services/gemsApi';
 const CATEGORIES = ['Ruby', 'Coral', 'Pearl', 'Crown Jewel'] as const;
 
 const CATEGORY_DESCRIPTIONS: Record<string, string> = {
-  Ruby: 'Informative — stakeholder is a source of information only.',
+  Ruby: 'Informant — stakeholder is a source of information only.',
   Coral: 'Connector — stakeholder links KCC to other relevant parties.',
   Pearl: 'Recommender — stakeholder actively recommends or supports KCC\'s position.',
   'Crown Jewel': 'Approver — stakeholder holds direct approval / decision-making authority.',
@@ -63,6 +63,7 @@ export default function GemsReviewWorkspace({ context }: Props) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
   const [reclassifyMap, setReclassifyMap] = useState<Record<string, string>>({});
+  const [adminCommentMap, setAdminCommentMap] = useState<Record<string, string>>({});
   const [snackbar, setSnackbar] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
 
   const refresh = async () => {
@@ -150,7 +151,7 @@ export default function GemsReviewWorkspace({ context }: Props) {
     }
   };
 
-  const handleReject = async (interaction: GemsInteractionRecord, newCategory: string) => {
+  const handleReject = async (interaction: GemsInteractionRecord, newCategory: string, adminComment = '') => {
     if (!newCategory || newCategory === interaction.Category) {
       setSnackbar({ message: 'Select a different classification to reclassify.', severity: 'error' });
       return;
@@ -163,6 +164,7 @@ export default function GemsReviewWorkspace({ context }: Props) {
         finalClassification: newCategory,
         reviewStatus: 'Rejected',
         category: newCategory,
+        adminComment: adminComment.trim() || undefined,
       });
 
       const pts = GEMS_CATEGORY_POINTS[newCategory] || 1;
@@ -247,6 +249,9 @@ export default function GemsReviewWorkspace({ context }: Props) {
                   const reclassifyTo = reclassifyMap[interaction.ID] || currentCategory;
                   const setReclassifyTo = (val: string) =>
                     setReclassifyMap((prev) => ({ ...prev, [interaction.ID]: val }));
+                  const adminComment = adminCommentMap[interaction.ID] || '';
+                  const setAdminComment = (val: string) =>
+                    setAdminCommentMap((prev) => ({ ...prev, [interaction.ID]: val }));
                   const isAcceptLoading = actionLoading === `accept-${interaction.ID}`;
                   const isRejectLoading = actionLoading === `reject-${interaction.ID}`;
 
@@ -280,47 +285,63 @@ export default function GemsReviewWorkspace({ context }: Props) {
                       </Typography>
 
                       <Box sx={{
-                        display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center',
-                        p: 1.5, borderRadius: 2, background: '#FAFBFC', border: '1px solid #E8ECF0',
+                        display: 'flex', flexDirection: 'column', gap: 1.5,
+                        p: 1.75, borderRadius: 2, background: '#FAFBFC', border: '1px solid #E8ECF0',
                       }}>
-                        <FormControl size="small" sx={{ minWidth: 200 }}>
-                          <InputLabel>Reclassify to</InputLabel>
-                          <Select
-                            value={reclassifyTo}
-                            label="Reclassify to"
-                            onChange={(e) => setReclassifyTo(e.target.value)}
+                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <FormControl size="small" sx={{ minWidth: 240, flex: { xs: '1 1 100%', sm: '0 1 320px' } }}>
+                            <InputLabel>Reclassify to</InputLabel>
+                            <Select
+                              value={reclassifyTo}
+                              label="Reclassify to"
+                              onChange={(e) => setReclassifyTo(e.target.value)}
+                            >
+                              {CATEGORIES.map((cat) => (
+                                <MenuItem key={cat} value={cat}>
+                                  {cat} — {GEMS_CATEGORY_POINTS[cat]}pt — {CATEGORY_DESCRIPTIONS[cat]}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+
+                          <Button
+                            variant="contained"
+                            color="success"
+                            size="small"
+                            startIcon={isAcceptLoading ? <CircularProgress size={16} sx={{ color: 'white' }} /> : <CheckCircleIcon />}
+                            disabled={isAcceptLoading || isRejectLoading}
+                            onClick={() => handleAccept(interaction)}
+                            sx={{ fontWeight: 700, borderRadius: 2, minWidth: 120 }}
                           >
-                            {CATEGORIES.map((cat) => (
-                              <MenuItem key={cat} value={cat}>
-                                {cat} — {GEMS_CATEGORY_POINTS[cat]}pt — {CATEGORY_DESCRIPTIONS[cat]}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
+                            {isAcceptLoading ? 'Saving...' : 'Accept'}
+                          </Button>
 
-                        <Button
-                          variant="contained"
-                          color="success"
-                          size="small"
-                          startIcon={isAcceptLoading ? <CircularProgress size={16} sx={{ color: 'white' }} /> : <CheckCircleIcon />}
-                          disabled={isAcceptLoading || isRejectLoading}
-                          onClick={() => handleAccept(interaction)}
-                          sx={{ fontWeight: 700, borderRadius: 2, minWidth: 120 }}
-                        >
-                          {isAcceptLoading ? 'Saving...' : 'Accept'}
-                        </Button>
+                          <Button
+                            variant="contained"
+                            color="warning"
+                            size="small"
+                            startIcon={isRejectLoading ? <CircularProgress size={16} sx={{ color: 'white' }} /> : <CancelIcon />}
+                            disabled={isAcceptLoading || isRejectLoading || reclassifyTo === currentCategory}
+                            onClick={() => handleReject(interaction, reclassifyTo, adminComment)}
+                            sx={{ fontWeight: 700, borderRadius: 2, minWidth: 160 }}
+                          >
+                            {isRejectLoading ? 'Saving...' : 'Reject & Reclassify'}
+                          </Button>
+                        </Box>
 
-                        <Button
-                          variant="contained"
-                          color="warning"
-                          size="small"
-                          startIcon={isRejectLoading ? <CircularProgress size={16} sx={{ color: 'white' }} /> : <CancelIcon />}
-                          disabled={isAcceptLoading || isRejectLoading || reclassifyTo === currentCategory}
-                          onClick={() => handleReject(interaction, reclassifyTo)}
-                          sx={{ fontWeight: 700, borderRadius: 2, minWidth: 140 }}
-                        >
-                          {isRejectLoading ? 'Saving...' : 'Reject & Reclassify'}
-                        </Button>
+                        {reclassifyTo !== currentCategory && (
+                          <TextField
+                            size="small"
+                            fullWidth
+                            multiline
+                            minRows={2}
+                            label="Admin Feedback / Reason for Reclassification"
+                            placeholder="Enter coaching note or reason why this category was changed (included in the notification email to the employee)..."
+                            value={adminComment}
+                            onChange={(e) => setAdminComment(e.target.value)}
+                            sx={{ background: '#FFFFFF' }}
+                          />
+                        )}
                       </Box>
                     </Box>
                   );

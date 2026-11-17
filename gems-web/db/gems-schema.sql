@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS gems_interactions (
   agency                           TEXT,          -- resolved to one of the eight
   business_arm                     TEXT,
   interaction_type                 TEXT NOT NULL
-                                    CHECK (interaction_type IN ('Meeting','Call','Email','Note')),
+                                    CHECK (interaction_type IN ('Physical Meeting','Virtual Meeting','Email','Meeting','Call','Note')),
   category                         TEXT NOT NULL
                                     CHECK (category IN ('Crown Jewel','Pearl','Coral','Ruby')),
   final_classification             TEXT,
@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS gems_interactions (
   points                           INTEGER NOT NULL DEFAULT 0,
   notes                            TEXT,
   justification                    TEXT,
+  admin_comment                    TEXT,
   review_status                    TEXT NOT NULL DEFAULT 'Submitted'
                                     CHECK (review_status IN ('Submitted','Pending Review','Validated','Rejected')),
   week_start                       DATE,

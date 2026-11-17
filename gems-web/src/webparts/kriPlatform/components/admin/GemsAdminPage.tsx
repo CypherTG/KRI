@@ -401,7 +401,7 @@ export default function GemsAdminPage({ context }: Props) {
           icon={<AssignmentTurnedInIcon />}
           label="Open Follow-Ups"
           value={openActions.length}
-          subtext={`${executiveRequests.length} exec. involvement reqs`}
+          subtext="Action items requiring follow-up"
           accent="#7C3AED"
           onClick={() => navigate('/gems/actions')}
         />
@@ -476,9 +476,10 @@ export default function GemsAdminPage({ context }: Props) {
             </Box>
           )}
 
-          {/* TAB 2: Full Admin Dashboard, Executive Involvement Queue, OKRs & Scoring */}
+          {/* TAB 2: Full Admin Dashboard, OKRs & Scoring */}
           {tab === 2 && (
             <Stack spacing={3}>
+              {/* Executive Support Requests card temporarily commented out
               <Paper sx={{ p: 2.5, borderRadius: 3, border: '1px solid #E2E8F0', background: '#FFFFFF' }}>
                 <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1.5} sx={{ mb: 1.5 }}>
                   <Box>
@@ -632,6 +633,7 @@ export default function GemsAdminPage({ context }: Props) {
                   </Stack>
                 )}
               </Paper>
+              */}
 
               <GemsOkrSection interactions={interactions} />
 

@@ -40,6 +40,8 @@ export interface BrandedEmailOptions {
   rows?: BrandedEmailSection[];
   notesTitle?: string;
   notesBody?: string;
+  adminCommentTitle?: string;
+  adminCommentBody?: string;
   calloutTitle?: string;
   calloutBody?: string;
   ctaLabel?: string;
@@ -278,6 +280,17 @@ export function renderKonstructumEmail(options: BrandedEmailOptions): string {
                         ${escapeHtml(options.notesTitle || 'Engagement Notes & Justification')}
                       </div>
                       <div style="font-size:13px;line-height:1.6;color:#334155;white-space:pre-wrap;">${escapeHtml(options.notesBody)}</div>
+                    </div>`
+                  : ''
+              }
+
+              ${
+                options.adminCommentBody
+                  ? `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-left:4px solid #D97706;border-radius:8px;padding:14px 16px;margin-bottom:22px;">
+                      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#B45309;margin-bottom:6px;">
+                        💬 ${escapeHtml(options.adminCommentTitle || 'Admin Review Feedback')}
+                      </div>
+                      <div style="font-size:13px;line-height:1.6;color:#78350F;white-space:pre-wrap;">${escapeHtml(options.adminCommentBody)}</div>
                     </div>`
                   : ''
               }
@@ -612,6 +625,7 @@ export async function sendGemsReviewNotificationEmail(params: {
   pointsAwarded: number;
   monthlyPointsTotal?: number;
   notes?: string;
+  adminComment?: string;
   reviewedBy: string;
   followUpRequired?: boolean;
   followUpDate?: string;
@@ -639,6 +653,9 @@ export async function sendGemsReviewNotificationEmail(params: {
     { label: 'Agency & Organisation', value: `${params.agency} · ${params.companyName || params.agency}` },
     { label: 'Business Entity', value: params.businessArm || 'KCC' },
     { label: 'Interaction Type', value: params.interactionType },
+    ...(params.adminComment
+      ? [{ label: 'Admin Feedback', value: params.adminComment }]
+      : []),
     { label: 'Reviewed By', value: params.reviewedBy },
   ];
 
@@ -674,6 +691,8 @@ export async function sendGemsReviewNotificationEmail(params: {
     rows,
     notesTitle: 'Meeting Notes & Justification',
     notesBody: params.notes || '',
+    adminCommentTitle: isAccepted ? 'Admin Feedback' : 'Admin Reclassification Feedback & Reason',
+    adminCommentBody: params.adminComment || '',
     calloutTitle: hasFollowUp ? 'Follow-Up Added to GEMS Calendar & Actions' : undefined,
     calloutBody: hasFollowUp
       ? followUpDateClean
@@ -695,6 +714,7 @@ export async function sendGemsReviewNotificationEmail(params: {
     ...rows.map((r) => `${r.label}: ${r.value}`),
     '',
     params.notes ? `Notes: ${params.notes}` : '',
+    params.adminComment ? `Admin Feedback: ${params.adminComment}` : '',
     '',
     'Open GEMS: https://konstructum-gems-six.vercel.app/gems/dashboard',
   ]

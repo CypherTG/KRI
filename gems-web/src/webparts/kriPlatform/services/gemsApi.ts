@@ -88,6 +88,7 @@ export interface GemsInteractionRecord {
   Points: number;
   Notes: string;
   Justification: string;
+  AdminComment?: string;
   ReviewStatus: string;
   WeekStart: string;
   ReportingMonth: string;
@@ -353,6 +354,7 @@ export async function updateGemsInteractionClassification(
     finalClassification?: string;
     reviewStatus?: string;
     justification?: string;
+    adminComment?: string;
     influencePercent?: number;
   },
 ): Promise<GemsInteractionRecord> {

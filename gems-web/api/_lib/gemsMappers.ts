@@ -67,6 +67,7 @@ export function mapGemsInteraction(row: any) {
     Points: number(row.points),
     Notes: text(row.notes),
     Justification: text(row.justification),
+    AdminComment: text(row.admin_comment),
     ReviewStatus: text(row.review_status) || 'Submitted',
     WeekStart: text(row.week_start) || weekStartOf(loggedAt),
     ReportingMonth: text(row.reporting_month) || monthOf(loggedAt),

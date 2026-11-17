@@ -49,10 +49,10 @@ const CATEGORY_COPY: Array<{ value: Category; label: string; role: string; influ
   { value: 'Crown Jewel', label: 'Crown Jewel', role: 'Approver', influence: 90, headline: 'Final Authority / High Influence', description: 'Final decision-makers responsible for approvals, permits, and authorizations. They hold the ultimate authority to approve or reject proposals and initiatives.' },
   { value: 'Pearl', label: 'Pearl', role: 'Recommender', influence: 75, headline: 'Technical Input / Medium-High Influence', description: 'Provide technical input and shape decisions before final approval. They influence the direction and quality of proposals through expert recommendations.' },
   { value: 'Coral', label: 'Coral', role: 'Connector', influence: 60, headline: 'Network Access / Medium Influence', description: 'Facilitate introductions and provide access to key stakeholders. They bridge gaps between diverse groups and enable communication channels. They also aid with Certifications and Permits.' },
-  { value: 'Ruby', label: 'Ruby', role: 'Informative', influence: 45, headline: 'Intelligence / Low-Medium Influence', description: 'Provide insights, updates, and early information on processes and requirements. They are valuable sources of intelligence and market knowledge.' },
+  { value: 'Ruby', label: 'Ruby', role: 'Informant', influence: 45, headline: 'Intelligence / Low-Medium Influence', description: 'Provide insights, updates, and early information on processes and requirements. They are valuable sources of intelligence and market knowledge.' },
 ];
 
-const INTERACTION_TYPES = ['Meeting', 'Call', 'Email', 'Note'] as const;
+const INTERACTION_TYPES = ['Physical Meeting', 'Virtual Meeting', 'Email'] as const;
 const BUSINESS_ARMS: BusinessArm[] = ['INTERKONSTRUCT', 'KCC', 'PMT7', 'NGNEERED PROJECTS'];
 const AGENCIES = GEMS_AGENCY_OPTIONS;
 const REVIEW_STATUSES = ['Submitted', 'Pending Review', 'Validated', 'Rejected'];
@@ -311,7 +311,7 @@ export default function GemsInteractionWorkspace({
     targetUserId: '',
     businessArm: 'KCC' as BusinessArm,
     agency: '',
-    interactionType: 'Meeting',
+    interactionType: 'Physical Meeting',
     category: 'Ruby' as Category,
     reviewStatus: 'Pending Review',
     notes: '',
@@ -396,10 +396,7 @@ export default function GemsInteractionWorkspace({
       setForm((current) => ({
         ...current,
         clientId: fixedClient?.ID || current.clientId || resolvedClients[0]?.ID || '',
-        targetUserId:
-          current.targetUserId
-          || resolvedUsers.find((user) => currentUserMatches(context, user))?.ID
-          || '',
+        targetUserId: current.targetUserId || '',
       }));
     } catch (err: any) {
       setError(err?.message || 'Failed to load the GEMS workspace.');
@@ -542,7 +539,7 @@ export default function GemsInteractionWorkspace({
         ...current,
         clientId: fixedClient?.ID || current.clientId,
         agency: '',
-        interactionType: 'Meeting',
+        interactionType: 'Physical Meeting',
         category: 'Ruby',
         reviewStatus: 'Pending Review',
         notes: '',
@@ -639,7 +636,7 @@ export default function GemsInteractionWorkspace({
       <Paper sx={{ p: 2.5, borderRadius: 3, border: '1px solid #E8ECF0' }}>
         <Typography sx={{ fontWeight: 900, color: '#1A1D23', mb: 1.5 }}>Government Relations Framework</Typography>
         <Alert severity="success" sx={{ borderRadius: 2, mb: 2 }}>
-          Stakeholder progression pathway: Unclassified/Ruby informators advance to Coral connectors, then Pearl recommenders, and finally Crown Jewel approvers based on engagement quality, strategic relevance, and influence.
+          Stakeholder progression pathway: Unclassified/Ruby informants advance to Coral connectors, then Pearl recommenders, and finally Crown Jewel approvers based on engagement quality, strategic relevance, and influence.
         </Alert>
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, minmax(0, 1fr))' }, gap: 1.5 }}>
           {CATEGORY_COPY.map((category) => (
@@ -728,14 +725,22 @@ export default function GemsInteractionWorkspace({
             )}
 
             <FormControl fullWidth size="small">
-              <InputLabel id="gems-workspace-user-label">Credit user</InputLabel>
+              <InputLabel id="gems-workspace-user-label" shrink={Boolean(form.targetUserId)}>Credit user</InputLabel>
               <Select
                 labelId="gems-workspace-user-label"
                 label="Credit user"
+                displayEmpty
                 value={form.targetUserId}
                 onChange={(event) => setForm((current) => ({ ...current, targetUserId: String(event.target.value) }))}
+                renderValue={(selected) => {
+                  if (!selected) {
+                    return <span style={{ color: '#94A3B8' }}>Select a company user</span>;
+                  }
+                  const u = users.find((entry) => String(entry.ID) === String(selected));
+                  return u ? userDisplayName(u) : String(selected);
+                }}
               >
-                <MenuItem value="">
+                <MenuItem value="" disabled>
                   <em>Select a company user</em>
                 </MenuItem>
                 {users.map((user) => (
@@ -833,6 +838,7 @@ export default function GemsInteractionWorkspace({
               onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
             />
 
+            {/* Executive Support request temporarily commented out
             <Box
               sx={{
                 p: 1.75,
@@ -866,6 +872,7 @@ export default function GemsInteractionWorkspace({
                 )}
               />
             </Box>
+            */}
 
             <FormControlLabel
               control={(

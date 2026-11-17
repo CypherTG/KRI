@@ -182,9 +182,9 @@ export default methodGuard(['GET', 'POST', 'PATCH', 'DELETE'], async (req, res) 
     if (!CATEGORY_POINTS[category]) {
       throw new HttpError(400, 'Category must be Crown Jewel, Pearl, Coral, or Ruby.');
     }
-    const interactionType = String(body.interactionType ?? body.InteractionType ?? 'Meeting');
-    if (!['Meeting', 'Call', 'Email', 'Note'].includes(interactionType)) {
-      throw new HttpError(400, 'Interaction type must be Meeting, Call, Email, or Note.');
+    const interactionType = String(body.interactionType ?? body.InteractionType ?? 'Physical Meeting');
+    if (!['Physical Meeting', 'Virtual Meeting', 'Email', 'Meeting', 'Call', 'Note'].includes(interactionType)) {
+      throw new HttpError(400, 'Interaction type must be Physical Meeting, Virtual Meeting, or Email.');
     }
 
     const companyName = client.company_name || '';
@@ -364,6 +364,9 @@ export default methodGuard(['GET', 'POST', 'PATCH', 'DELETE'], async (req, res) 
     assignments.push(`review_status = ${bind(status)}`);
   }
   if ('justification' in body) assignments.push(`justification = ${bind(optionalString(body.justification, 20000))}`);
+  if ('adminComment' in body || 'admin_comment' in body || 'comment' in body) {
+    assignments.push(`admin_comment = ${bind(optionalString(body.adminComment ?? body.admin_comment ?? body.comment, 10000))}`);
+  }
   if ('influencePercent' in body) assignments.push(`influence_percent = ${bind(body.influencePercent)}`);
 
   if (!assignments.length) throw new HttpError(400, 'Nothing to update.');
@@ -413,6 +416,7 @@ export default methodGuard(['GET', 'POST', 'PATCH', 'DELETE'], async (req, res) 
     pointsAwarded: Number(row.points || CATEGORY_POINTS[finalCategory] || 1),
     monthlyPointsTotal: monthSumRow?.total ?? Number(row.points || 0),
     notes: String(row.notes || row.justification || ''),
+    adminComment: String(row.admin_comment || ''),
     reviewedBy: user.displayName,
     followUpRequired: Boolean(row.follow_up_required),
     followUpDate: followUpDateStr,
@@ -432,7 +436,7 @@ export default methodGuard(['GET', 'POST', 'PATCH', 'DELETE'], async (req, res) 
       `${finalCategory} (${row.review_status})`,
       user.displayName,
       user.email,
-      `${decision} as ${finalCategory} (${row.points} pts). Email to ${recipient.email}: ${mailResult.sent ? 'sent' : 'queued'} (${mailResult.transport})${followUpDateStr ? ` · Follow-up: ${followUpDateStr}` : ''}`,
+      `${decision} as ${finalCategory} (${row.points} pts). Email to ${recipient.email}: ${mailResult.sent ? 'sent' : 'queued'} (${mailResult.transport})${followUpDateStr ? ` · Follow-up: ${followUpDateStr}` : ''}${row.admin_comment ? ` · Admin Feedback: ${row.admin_comment}` : ''}`,
     ],
   );
 

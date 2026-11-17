@@ -24,7 +24,7 @@ const FAQ = [
   },
   {
     title: 'Scoring model',
-    body: 'Approvers/Crown Jewel are final decision-makers responsible for approvals, permits, and authorizations: 1 point. Recommenders/Pearl provide technical input and shape decisions before final approval: 5 points. Connectors/Coral facilitate introductions, access pathways, certifications, and permits: 3 points. Informators/Ruby provide insights, updates, and early information: 1 point.',
+    body: 'Approvers/Crown Jewel are final decision-makers responsible for approvals, permits, and authorizations: 1 point. Recommenders/Pearl provide technical input and shape decisions before final approval: 5 points. Connectors/Coral facilitate introductions, access pathways, certifications, and permits: 3 points. Informants/Ruby provide insights, updates, and early information: 1 point.',
   },
   {
     title: 'Monthly target',
