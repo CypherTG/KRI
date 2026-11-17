@@ -15,6 +15,7 @@ import GemsCompliancePage from './compliance/GemsCompliancePage';
 import GemsActionsPage from './actions/GemsActionsPage';
 import GemsReviewWorkspace from './review/GemsReviewWorkspace';
 import GemsAdminPage from './admin/GemsAdminPage';
+import GemsSuperadminPage from './superadmin/GemsSuperadminPage';
 import GemsCalendarView from './schedule/GemsCalendarView';
 import GemsErrorBoundary from './shared/GemsErrorBoundary';
 import GemsRoleGuard from './shared/GemsRoleGuard';
@@ -100,6 +101,7 @@ export default function App({ context }: Props) {
               <Route path='/' element={<Navigate to={effectiveIsAdmin ? '/gems/admin' : homeRoute} replace />} />
 
               {/* GEMS routes */}
+              <Route path='/gems/superadmin' element={<GemsRoleGuard context={context} requiredRole="superadmin"><GemsSuperadminPage context={context} /></GemsRoleGuard>} />
               <Route path='/gems/admin' element={<GemsRoleGuard context={context} requiredRole="admin"><GemsAdminPage context={context} /></GemsRoleGuard>} />
               <Route path='/gems/dashboard' element={<GemsDashboard context={context} />} />
               <Route path='/gems/stakeholders' element={<GemsStakeholderList context={context} />} />
@@ -127,6 +129,7 @@ export default function App({ context }: Props) {
               />
 
               {/* Backward-compatible flat route redirects */}
+              <Route path='/superadmin' element={<Navigate to='/gems/superadmin' replace />} />
               <Route path='/admin' element={<Navigate to='/gems/admin' replace />} />
               <Route path='/dashboard' element={<Navigate to='/gems/dashboard' replace />} />
               <Route path='/clients' element={<Navigate to='/gems/stakeholders' replace />} />

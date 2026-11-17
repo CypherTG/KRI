@@ -8,8 +8,6 @@ import {
   IconButton,
   InputAdornment,
   Stack,
-  Tab,
-  Tabs,
   TextField,
   Typography,
 } from '@mui/material';
@@ -17,32 +15,32 @@ import { alpha, useTheme } from '@mui/material/styles';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import ContentPasteRoundedIcon from '@mui/icons-material/ContentPasteRounded';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
+import LanOutlinedIcon from '@mui/icons-material/LanOutlined';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import airosLogo from '../assets/AIROS_Logo.png';
 import konstructumLogo from '../assets/konstructum-logo.png';
-import { ALLOWED_EMAIL_DOMAINS, isAllowedEmail } from '../services/allowedDomains';
 import { familyFromEmail } from '../services/families';
 import { useAuth } from '../../../services/session';
 import { setStoredGemsViewMode, GemsViewMode } from '../utils/gemsRbac';
-
-type Mode = 'signin' | 'register';
+import { apiRequest } from '../../../types/kri';
 
 const EXEMPT_EMAILS = ['mbello@konstructum.com', 'onechief011@gmail.com'];
 
-const DOMAINS = [
+const DEFAULT_DOMAINS = [
   { domain: 'konstructum.com', label: 'Konstructum' },
   { domain: 'pmt7integrated.com', label: 'PMT7' },
   { domain: 'interkonstruct.com', label: 'Interkonstruct' },
   { domain: 'ngneeredprojects.com', label: 'NGneered' },
+  { domain: 'kcc.com', label: 'KCC' },
 ];
 
 const GEMSTONE_LEDGER = [
-  { code: 'RUBY', metric: '45% · 1 PT', desc: 'Regulatory intelligence & early mapping', color: '#F87171' },
-  { code: 'CORAL', metric: '60% · 3 PTS', desc: 'Directorate dialogue & technical alignment', color: '#FB923C' },
-  { code: 'PEARL', metric: '75% · 5 PTS', desc: 'Internal advocacy & compliance endorsement', color: '#38BDF8' },
-  { code: 'CROWN JEWEL', metric: '90% · EXEC', desc: 'Executive authority & final clearance', color: '#2DD4BF' },
+  { code: 'RUBY', metric: '45% · 1 PT', desc: 'Informant — intelligence & early mapping', color: '#F87171' },
+  { code: 'CORAL', metric: '60% · 3 PTS', desc: 'Connector — directorate access & alignment', color: '#FB923C' },
+  { code: 'PEARL', metric: '75% · 5 PTS', desc: 'Recommender — technical advocacy & endorsement', color: '#38BDF8' },
+  { code: 'CROWN JEWEL', metric: '90% · 1 PT', desc: 'Approver — final authority & clearance', color: '#2DD4BF' },
 ];
 
 const AGENCIES = ['NUPRC', 'NUIMS', 'NCDMB', 'NEPL', 'NNPC', 'NIMASA', 'ENSERV', 'NMDPRA'];
@@ -51,50 +49,58 @@ export default function SignIn() {
   const theme = useTheme();
   const {
     login,
-    register,
+    loginWithSso,
     error,
     clearError,
-    needsToken,
     notice,
     clearNotice,
-    resendCode,
   } = useAuth();
 
-  const [mode, setMode] = useState<Mode>('signin');
   const [roleIntent, setRoleIntent] = useState<GemsViewMode>('user');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [token, setToken] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [jobTitle, setJobTitle] = useState('');
   const [busy, setBusy] = useState(false);
-  const [resendBusy, setResendBusy] = useState(false);
-  const [resendNote, setResendNote] = useState<string | null>(null);
+  const [ssoBusy, setSsoBusy] = useState(false);
+  const [domains, setDomains] = useState<Array<{ domain: string; label: string }>>(DEFAULT_DOMAINS);
+  const [ssoEnabled, setSsoEnabled] = useState(true);
 
   const emailInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void apiRequest<{
+      allowedDomains?: Array<{ domain: string; label: string; is_active?: boolean }>;
+      ssoEnabled?: boolean;
+    }>('/auth/login')
+      .then((res) => {
+        if (cancelled) return;
+        if (Array.isArray(res?.allowedDomains) && res.allowedDomains.length > 0) {
+          setDomains(res.allowedDomains.map((d) => ({ domain: d.domain, label: d.label })));
+        }
+        if (typeof res?.ssoEnabled === 'boolean') {
+          setSsoEnabled(res.ssoEnabled);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const isDark = theme.palette.mode === 'dark';
   const textPrimary = isDark ? '#F8FAFC' : '#0F172A';
   const textMuted = isDark ? '#94A3B8' : '#64748B';
   const border = isDark ? '#1E293B' : '#E2E8F0';
 
-  const emailAllowed = isAllowedEmail(email, EXEMPT_EMAILS);
-  const domainHint = ALLOWED_EMAIL_DOMAINS.map((d) => `@${d}`).join(', ');
+  const trimmedEmail = email.trim().toLowerCase();
+  const emailDomainPart = trimmedEmail.includes('@') ? trimmedEmail.split('@')[1] || '' : '';
+  const emailAllowed =
+    !trimmedEmail
+    || EXEMPT_EMAILS.includes(trimmedEmail)
+    || (Boolean(emailDomainPart) && domains.some((d) => d.domain.toLowerCase() === emailDomainPart));
+  const domainHint = domains.map((d) => `@${d.domain}`).join(', ');
   const detectedFamily = familyFromEmail(email);
-
-  const switchMode = (next: Mode) => {
-    setMode(next);
-    clearError();
-    setToken('');
-    setResendNote(null);
-  };
-
-  useEffect(() => {
-    if (needsToken && notice && mode === 'register') {
-      setMode('signin');
-    }
-  }, [needsToken, notice, mode]);
 
   const applyDomain = (domain: string) => {
     clearError();
@@ -109,51 +115,34 @@ export default function SignIn() {
     }, 20);
   };
 
-  const handlePasteToken = async () => {
-    try {
-      const clip = await navigator.clipboard.readText();
-      if (clip) {
-        setToken(clip.trim().toUpperCase().replace(/\s+/g, '').slice(0, 32));
-      }
-    } catch {
-      // Ignore clipboard error
-    }
-  };
-
-  const onResend = async () => {
-    if (resendBusy || !email.trim()) return;
-    setResendBusy(true);
-    setResendNote(null);
-    try {
-      await resendCode(email.trim());
-      setResendNote('If that address needs a code, one is on its way.');
-    } catch {
-      setResendNote('Could not send code right now.');
-    } finally {
-      setResendBusy(false);
-    }
-  };
-
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (busy) return;
+    if (busy || ssoBusy) return;
     setBusy(true);
     try {
-      if (mode === 'signin') {
-        setStoredGemsViewMode(roleIntent);
-        await login(email.trim(), password, token ? token.trim().toUpperCase() : undefined);
-      } else {
-        await register({
-          email: email.trim(),
-          password,
-          displayName: displayName.trim() || undefined,
-          jobTitle: jobTitle.trim() || undefined,
-        });
-      }
+      setStoredGemsViewMode(roleIntent);
+      await login(email.trim(), password);
     } catch {
       // Handled by store
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleIntranetSso = async () => {
+    if (busy || ssoBusy) return;
+    if (!email.trim()) {
+      emailInputRef.current?.focus();
+      return;
+    }
+    setSsoBusy(true);
+    try {
+      setStoredGemsViewMode(roleIntent);
+      await loginWithSso({ email: email.trim() });
+    } catch {
+      // Handled by store
+    } finally {
+      setSsoBusy(false);
     }
   };
 
@@ -254,7 +243,7 @@ export default function SignIn() {
               mb: 3.5,
             }}
           >
-            Business Arm Monthly (BAM) scoring, stakeholder rosters, and permit governance across eight core agencies.
+            Business Alignment Meeting (BAM) scoring, stakeholder rosters, and permit governance across all partner agencies and organisations.
           </Typography>
 
           {/* Classic 4-Row Gemstone Ledger */}
@@ -346,7 +335,7 @@ export default function SignIn() {
         </Stack>
       </Box>
 
-      {/* ── RIGHT PANEL: Clean Classic Authentication Form ─────────────────── */}
+      {/* ── RIGHT PANEL: Corporate Authentication & Intranet SSO ───────────── */}
       <Box
         sx={{
           display: 'flex',
@@ -357,55 +346,41 @@ export default function SignIn() {
           background: isDark ? '#0F172A' : '#FFFFFF',
         }}
       >
-        <Box sx={{ width: '100%', maxWidth: 380 }}>
+        <Box sx={{ width: '100%', maxWidth: 400 }}>
           {/* Header */}
           <Box sx={{ mb: 3 }}>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+              <Box
+                sx={{
+                  px: 1,
+                  py: 0.3,
+                  borderRadius: 1,
+                  bgcolor: 'rgba(13, 148, 136, 0.1)',
+                  color: '#0D9488',
+                  fontSize: '0.68rem',
+                  fontWeight: 800,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Corporate Intranet &amp; Identity
+              </Box>
+            </Stack>
             <Typography
               sx={{
-                fontWeight: 700,
-                fontSize: '1.45rem',
+                fontWeight: 800,
+                fontSize: '1.5rem',
                 letterSpacing: '-0.025em',
                 color: textPrimary,
                 mb: 0.5,
               }}
             >
-              {mode === 'signin' ? 'Sign in to GEMS' : 'Create your account'}
+              Sign in to GEMS
             </Typography>
             <Typography sx={{ fontSize: '0.84rem', color: textMuted }}>
-              {mode === 'signin'
-                ? 'Enter your corporate credentials to continue.'
-                : 'Use your official group email address to register.'}
+              Enter your provisioned corporate credentials or continue with Group Intranet SSO.
             </Typography>
           </Box>
-
-          {/* Classic Tab Switcher */}
-          <Tabs
-            value={mode}
-            onChange={(_, value) => switchMode(value)}
-            variant="fullWidth"
-            sx={{
-              mb: 3,
-              minHeight: 38,
-              borderBottom: `1px solid ${border}`,
-              '& .MuiTabs-indicator': {
-                backgroundColor: textPrimary,
-                height: 2,
-              },
-              '& .MuiTab-root': {
-                minHeight: 38,
-                textTransform: 'none',
-                fontWeight: 600,
-                fontSize: '0.84rem',
-                color: textMuted,
-                '&.Mui-selected': {
-                  color: textPrimary,
-                },
-              },
-            }}
-          >
-            <Tab value="signin" label="Sign in" />
-            <Tab value="register" label="Create account" />
-          </Tabs>
 
           <Box component="form" onSubmit={submit}>
             <Stack spacing={2}>
@@ -429,56 +404,56 @@ export default function SignIn() {
                 </Alert>
               )}
 
-              {/* Email */}
-              {mode === 'signin' && (
-                <Box>
-                  <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: textMuted, mb: 0.75, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    Sign in as
-                  </Typography>
-                  <Box
-                    sx={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
-                      gap: 0.75,
-                      p: 0.5,
-                      borderRadius: 2,
-                      bgcolor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
-                      border: `1px solid ${border}`,
-                    }}
-                  >
-                    {([
-                      { key: 'user', label: 'User Workspace', icon: <PersonOutlineIcon sx={{ fontSize: 16 }} /> },
-                      { key: 'admin', label: 'Admin Workspace', icon: <ShieldOutlinedIcon sx={{ fontSize: 16 }} /> },
-                    ] as const).map((opt) => {
-                      const active = roleIntent === opt.key;
-                      return (
-                        <Button
-                          key={opt.key}
-                          type="button"
-                          size="small"
-                          startIcon={opt.icon}
-                          onClick={() => setRoleIntent(opt.key)}
-                          sx={{
-                            py: 0.75,
-                            borderRadius: 1.5,
-                            textTransform: 'none',
-                            fontWeight: 700,
-                            fontSize: '0.78rem',
-                            bgcolor: active ? (opt.key === 'admin' ? '#0D9488' : '#FFFFFF') : 'transparent',
-                            color: active ? (opt.key === 'admin' ? '#FFFFFF' : '#0F172A') : textMuted,
-                            boxShadow: active ? '0 2px 6px rgba(15,23,42,0.08)' : 'none',
-                            '&:hover': {
-                              bgcolor: active ? (opt.key === 'admin' ? '#0F766E' : '#FFFFFF') : alpha(textPrimary, 0.04),
-                            },
-                          }}
-                        >
-                          {opt.label}
-                        </Button>
-                      );
-                    })}
-                  </Box>
+              {/* Workspace Selector */}
+              <Box>
+                <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: textMuted, mb: 0.75, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Sign in as
+                </Typography>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: 0.75,
+                    p: 0.5,
+                    borderRadius: 2,
+                    bgcolor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
+                    border: `1px solid ${border}`,
+                  }}
+                >
+                  {([
+                    { key: 'user', label: 'User Workspace', icon: <PersonOutlineIcon sx={{ fontSize: 16 }} /> },
+                    { key: 'admin', label: 'Admin Workspace', icon: <ShieldOutlinedIcon sx={{ fontSize: 16 }} /> },
+                  ] as const).map((opt) => {
+                    const active = roleIntent === opt.key;
+                    return (
+                      <Button
+                        key={opt.key}
+                        type="button"
+                        size="small"
+                        startIcon={opt.icon}
+                        onClick={() => setRoleIntent(opt.key)}
+                        sx={{
+                          py: 0.75,
+                          borderRadius: 1.5,
+                          textTransform: 'none',
+                          fontWeight: 700,
+                          fontSize: '0.78rem',
+                          bgcolor: active ? (opt.key === 'admin' ? '#0D9488' : '#FFFFFF') : 'transparent',
+                          color: active ? (opt.key === 'admin' ? '#FFFFFF' : '#0F172A') : textMuted,
+                          boxShadow: active ? '0 2px 6px rgba(15,23,42,0.08)' : 'none',
+                          '&:hover': {
+                            bgcolor: active ? (opt.key === 'admin' ? '#0F766E' : '#FFFFFF') : alpha(textPrimary, 0.04),
+                          },
+                        }}
+                      >
+                        {opt.label}
+                      </Button>
+                    );
+                  })}
                 </Box>
-              )}
+              </Box>
+
+              {/* Work Email + Dynamic Domain Quick-Select */}
               <Box>
                 <TextField
                   inputRef={emailInputRef}
@@ -513,14 +488,14 @@ export default function SignIn() {
                     ) : undefined,
                   }}
                   helperText={
-                    !emailAllowed ? `Permitted domains: ${domainHint}` : undefined
+                    !emailAllowed ? `Permitted corporate domains: ${domainHint}` : undefined
                   }
                 />
 
-                {/* Minimal Domain Quick-Select */}
+                {/* Dynamic Allowed Domains Quick-Select */}
                 <Stack direction="row" spacing={0.6} useFlexGap flexWrap="wrap" sx={{ mt: 0.8 }}>
-                  {DOMAINS.map((d) => {
-                    const active = email.toLowerCase().endsWith(`@${d.domain}`);
+                  {domains.map((d) => {
+                    const active = email.toLowerCase().endsWith(`@${d.domain.toLowerCase()}`);
                     return (
                       <Box
                         key={d.domain}
@@ -553,37 +528,15 @@ export default function SignIn() {
                 </Stack>
               </Box>
 
-              {mode === 'register' && (
-                <>
-                  <TextField
-                    label="Full name"
-                    size="small"
-                    fullWidth
-                    autoComplete="name"
-                    value={displayName}
-                    onChange={(event) => setDisplayName(event.target.value)}
-                  />
-                  <TextField
-                    label="Job title"
-                    size="small"
-                    fullWidth
-                    placeholder="e.g. Regulatory Affairs Lead"
-                    value={jobTitle}
-                    onChange={(event) => setJobTitle(event.target.value)}
-                  />
-                </>
-              )}
-
               <TextField
                 label="Password"
                 type={showPassword ? 'text' : 'password'}
                 size="small"
                 fullWidth
                 required
-                autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                autoComplete="current-password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                helperText={mode === 'register' ? 'Minimum 8 characters.' : undefined}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
@@ -604,68 +557,16 @@ export default function SignIn() {
                 }}
               />
 
-              {/* Verification code field */}
-              {mode === 'signin' && needsToken && (
-                <Stack spacing={1}>
-                  <TextField
-                    label="Verification code"
-                    size="small"
-                    fullWidth
-                    required
-                    autoComplete="one-time-code"
-                    value={token}
-                    onChange={(event) => setToken(event.target.value.toUpperCase())}
-                    placeholder="32-character emailed code"
-                    inputProps={{
-                      maxLength: 32,
-                      style: {
-                        letterSpacing: '0.1em',
-                        fontFamily: '"JetBrains Mono", monospace',
-                        fontSize: '0.8rem',
-                      },
-                    }}
-                    InputProps={{
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <IconButton
-                            size="small"
-                            onClick={() => { void handlePasteToken(); }}
-                            title="Paste code"
-                          >
-                            <ContentPasteRoundedIcon sx={{ fontSize: 16 }} />
-                          </IconButton>
-                        </InputAdornment>
-                      ),
-                    }}
-                    helperText="Valid for 5 minutes."
-                  />
-                  <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                    <Button
-                      variant="text"
-                      size="small"
-                      onClick={() => { void onResend(); }}
-                      disabled={resendBusy || busy}
-                      sx={{ fontWeight: 600, p: 0, minWidth: 0, fontSize: '0.75rem', color: textPrimary }}
-                    >
-                      {resendBusy ? 'Sending…' : 'Resend code'}
-                    </Button>
-                    {resendNote && (
-                      <Typography sx={{ fontSize: '0.72rem', color: textMuted }}>{resendNote}</Typography>
-                    )}
-                  </Stack>
-                </Stack>
-              )}
-
               <Button
                 type="submit"
                 variant="contained"
                 size="large"
                 disabled={
                   busy ||
+                  ssoBusy ||
                   !email.trim() ||
                   !password ||
-                  !emailAllowed ||
-                  (mode === 'register' && password.length < 8)
+                  !emailAllowed
                 }
                 endIcon={!busy ? <ArrowForwardIcon sx={{ fontSize: 16 }} /> : undefined}
                 startIcon={busy ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : undefined}
@@ -673,31 +574,74 @@ export default function SignIn() {
                   mt: 0.5,
                   py: 1.2,
                   borderRadius: 1.5,
-                  fontWeight: 600,
+                  fontWeight: 700,
                   fontSize: '0.88rem',
-                  backgroundColor: isDark ? '#4F46E5' : '#0F172A',
+                  backgroundColor: isDark ? '#0D9488' : '#0F172A',
                   color: '#FFFFFF',
                   boxShadow: 'none',
                   '&:hover': {
-                    backgroundColor: isDark ? '#4338CA' : '#1E293B',
+                    backgroundColor: isDark ? '#0F766E' : '#1E293B',
                     boxShadow: 'none',
                   },
                 }}
               >
-                {busy
-                  ? 'Please wait…'
-                  : mode === 'signin'
-                    ? 'Sign in'
-                    : 'Create account'}
+                {busy ? 'Signing in…' : 'Sign in with Password'}
               </Button>
+
+              {ssoEnabled && (
+                <>
+                  <Divider sx={{ my: 0.5 }}>
+                    <Typography sx={{ fontSize: '0.7rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                      or Group Intranet SSO
+                    </Typography>
+                  </Divider>
+
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    size="large"
+                    disabled={busy || ssoBusy || !email.trim() || !emailAllowed}
+                    onClick={() => void handleIntranetSso()}
+                    startIcon={ssoBusy ? <CircularProgress size={16} /> : <LanOutlinedIcon sx={{ fontSize: 18 }} />}
+                    sx={{
+                      py: 1.1,
+                      borderRadius: 1.5,
+                      fontWeight: 700,
+                      fontSize: '0.84rem',
+                      textTransform: 'none',
+                      borderColor: '#0D9488',
+                      color: '#0D9488',
+                      '&:hover': {
+                        borderColor: '#0F766E',
+                        backgroundColor: 'rgba(13, 148, 136, 0.06)',
+                      },
+                    }}
+                  >
+                    {ssoBusy ? 'Verifying Intranet Identity…' : 'Continue with Group Intranet SSO'}
+                  </Button>
+                </>
+              )}
             </Stack>
           </Box>
 
           <Divider sx={{ my: 3 }} />
 
-          <Typography sx={{ fontSize: '0.74rem', color: textMuted, lineHeight: 1.6 }}>
-            Restricted to verified Konstructum Group accounts. Credentials are shared across KAIROS and GEMS.
-          </Typography>
+          <Box
+            sx={{
+              p: 1.5,
+              borderRadius: 2,
+              bgcolor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+              border: `1px solid ${border}`,
+            }}
+          >
+            <Stack direction="row" spacing={1} alignItems="flex-start">
+              <LockOutlinedIcon sx={{ fontSize: 16, color: '#0D9488', mt: 0.25 }} />
+              <Typography sx={{ fontSize: '0.73rem', color: textMuted, lineHeight: 1.55 }}>
+                <strong>Managed Corporate Access:</strong> Public account creation is disabled. Only the{' '}
+                <strong>Super Administrator</strong> can invite users and authorize corporate domains across GEMS, KAIROS, and the Group Intranet.
+              </Typography>
+            </Stack>
+          </Box>
         </Box>
       </Box>
     </Box>

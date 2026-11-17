@@ -476,14 +476,16 @@ export default function GemsInteractionWorkspace({
     };
   });
 
+  const currentUserName =
+    context.pageContext.user.displayName
+    || context.pageContext.user.email
+    || context.pageContext.user.loginName
+    || 'Current User';
+
   const handleSave = async () => {
     const resolvedClient = selectedClient || scopedClients.find((client) => String(client.ID) === String(form.clientId)) || clients.find((client) => String(client.ID) === String(form.clientId)) || fixedClient || null;
     if (!resolvedClient) {
       setError('Select a synced stakeholder from the registry.');
-      return;
-    }
-    if (!form.targetUserId) {
-      setError('Select the company user who should receive the score.');
       return;
     }
     if (!form.businessArm) {
@@ -499,11 +501,22 @@ export default function GemsInteractionWorkspace({
       return;
     }
 
-    const user = users.find((entry) => String(entry.ID) === String(form.targetUserId));
-    if (!user) {
-      setError('The selected company user could not be resolved.');
-      return;
-    }
+    const typedCreditUser = form.targetUserId.trim();
+    const matchedUser = typedCreditUser
+      ? users.find(
+          (entry) =>
+            String(entry.ID) === typedCreditUser
+            || userDisplayName(entry).toLowerCase() === typedCreditUser.toLowerCase()
+            || String(entry.Email || entry.UserAccount?.Email || '').toLowerCase() === typedCreditUser.toLowerCase(),
+        )
+      : users.find((entry) => currentUserMatches(context, entry));
+
+    const resolvedTargetUserName = matchedUser
+      ? userDisplayName(matchedUser)
+      : typedCreditUser || currentUserName;
+    const resolvedTargetUserId = matchedUser
+      ? String(matchedUser.ID)
+      : String(context.pageContext.user.id || '');
 
     setSaving(true);
     setError('');
@@ -515,8 +528,8 @@ export default function GemsInteractionWorkspace({
         companyName: normalizeLookupText(resolvedClient.CompanyName),
         agency: normalizeGemsAgency(form.agency.trim()) || form.agency.trim(),
         businessArm: form.businessArm,
-        targetUser: userDisplayName(user),
-        targetUserId: String(user.ID),
+        targetUser: resolvedTargetUserName,
+        targetUserId: resolvedTargetUserId,
         interactionType: form.interactionType,
         category: form.category,
         finalClassification: form.category,
@@ -724,32 +737,15 @@ export default function GemsInteractionWorkspace({
               </Box>
             )}
 
-            <FormControl fullWidth size="small">
-              <InputLabel id="gems-workspace-user-label" shrink={Boolean(form.targetUserId)}>Credit user</InputLabel>
-              <Select
-                labelId="gems-workspace-user-label"
-                label="Credit user"
-                displayEmpty
-                value={form.targetUserId}
-                onChange={(event) => setForm((current) => ({ ...current, targetUserId: String(event.target.value) }))}
-                renderValue={(selected) => {
-                  if (!selected) {
-                    return <span style={{ color: '#94A3B8' }}>Select a company user</span>;
-                  }
-                  const u = users.find((entry) => String(entry.ID) === String(selected));
-                  return u ? userDisplayName(u) : String(selected);
-                }}
-              >
-                <MenuItem value="" disabled>
-                  <em>Select a company user</em>
-                </MenuItem>
-                {users.map((user) => (
-                  <MenuItem key={user.ID} value={String(user.ID)}>
-                    {userDisplayName(user)}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <TextField
+              fullWidth
+              size="small"
+              label="Credit user"
+              placeholder={currentUserName}
+              value={form.targetUserId}
+              onChange={(event) => setForm((current) => ({ ...current, targetUserId: event.target.value }))}
+              InputLabelProps={{ shrink: true }}
+            />
 
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
               <FormControl fullWidth size="small">

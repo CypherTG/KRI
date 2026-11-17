@@ -6,6 +6,7 @@ import {
   apiRequest,
   buildContext,
   onUnauthorised,
+  setStoredAuthToken,
 } from '../types/kri';
 
 type SessionState = 'loading' | 'anonymous' | 'authenticated';
@@ -14,42 +15,23 @@ interface KriAuthState {
   status: SessionState;
   user: KriSessionUser | null;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   context: KriContext | null;
   error: string | null;
-
-  /**
-   * True when the account must present an emailed code.
-   *
-   * Set by the sign-in probe, and also by a sign-in attempt that comes back
-   * `needsToken: true`. The second source matters: if the probe never fired —
-   * the address was pasted rather than typed, or the debounce was interrupted —
-   * the code field must still appear, or the person is stuck with no way to
-   * enter their code.
-   */
   needsToken: boolean;
-  /** Message shown after a successful sign-up, before verification. */
   notice: string | null;
 
   bootstrap: () => Promise<void>;
   login: (email: string, password: string, token?: string) => Promise<void>;
+  loginWithSso: (input: { email?: string; ssoToken?: string }) => Promise<void>;
   register: (input: { email: string; password: string; displayName?: string; jobTitle?: string }) => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
   clearNotice: () => void;
   setNeedsToken: (needsToken: boolean) => void;
-  /** Asks the server whether this address is waiting on a code. */
   probeNeedsToken: (email: string) => Promise<boolean>;
-  /** Requests another code. Always reports success, by design. */
   resendCode: (email: string) => Promise<void>;
   setUser: (user: KriSessionUser, isAdmin: boolean) => void;
-  /**
-   * Re-reads the session from the server and rebuilds the context.
-   *
-   * Needed after a change that alters the signed-in user rather than the data
-   * they are looking at — a profile photo, say — so the header avatar and every
-   * other consumer of `context.session` see it immediately instead of on the
-   * next page load.
-   */
   refresh: () => Promise<void>;
 }
 
@@ -57,16 +39,26 @@ function adopt(
   set: (partial: Partial<KriAuthState>) => void,
   user: KriSessionUser,
   isAdmin: boolean,
+  isSuperAdmin?: boolean,
 ) {
+  const superAdmin =
+    Boolean(isSuperAdmin)
+    || Boolean(user.isSuperAdmin)
+    || String(user.email || '').trim().toLowerCase() === 'mbello@konstructum.com';
+  const admin = Boolean(isAdmin) || Boolean(user.isAdmin) || superAdmin;
+  const enrichedUser: KriSessionUser = {
+    ...user,
+    isAdmin: admin,
+    isSuperAdmin: superAdmin,
+  };
   set({
     status: 'authenticated',
-    user,
-    isAdmin,
-    context: buildContext(user),
+    user: enrichedUser,
+    isAdmin: admin,
+    isSuperAdmin: superAdmin,
+    context: buildContext(enrichedUser),
     error: null,
     notice: null,
-    // A live session is always a verified one — the server refuses to issue any
-    // other — so the code field can be cleared on sign-in.
     needsToken: false,
   });
 }
@@ -75,36 +67,86 @@ export const useAuth = create<KriAuthState>((set, get) => ({
   status: 'loading',
   user: null,
   isAdmin: false,
+  isSuperAdmin: false,
   context: null,
   error: null,
   needsToken: false,
   notice: null,
 
   async bootstrap() {
+    // 1. Check if launched from Group Intranet or cross-app with ?sso_token=... or ?intranet_email=...
+    if (typeof window !== 'undefined') {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const urlSsoToken = params.get('sso_token') || params.get('ssoToken') || '';
+        const urlSsoEmail = params.get('sso_email') || params.get('intranet_email') || '';
+        if (urlSsoToken || urlSsoEmail) {
+          params.delete('sso_token');
+          params.delete('ssoToken');
+          params.delete('sso_email');
+          params.delete('intranet_email');
+          const cleanSearch = params.toString();
+          const cleanUrl = `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ''}${window.location.hash}`;
+          window.history.replaceState({}, '', cleanUrl);
+
+          const ssoRes = await apiRequest<{
+            token?: string;
+            user: KriSessionUser;
+            isAdmin: boolean;
+            isSuperAdmin?: boolean;
+          }>('/auth/login', {
+            method: 'POST',
+            body: {
+              mode: 'sso',
+              ...(urlSsoToken ? { ssoToken: urlSsoToken } : {}),
+              ...(urlSsoEmail ? { email: urlSsoEmail } : {}),
+            },
+          });
+          if (ssoRes?.user) {
+            if (ssoRes.token) setStoredAuthToken(ssoRes.token);
+            adopt(set, ssoRes.user, Boolean(ssoRes.isAdmin), Boolean(ssoRes.isSuperAdmin));
+            return;
+          }
+        }
+      } catch {
+        // Fall through to standard session check
+      }
+    }
+
+    // 2. Standard session resolution
     try {
-      const result = await apiRequest<{ user: KriSessionUser; isAdmin: boolean }>('/auth/session');
+      const result = await apiRequest<{
+        token?: string;
+        user: KriSessionUser;
+        isAdmin: boolean;
+        isSuperAdmin?: boolean;
+      }>('/auth/session');
       if (result?.user) {
-        adopt(set, result.user, Boolean(result.isAdmin));
+        if (result.token) setStoredAuthToken(result.token);
+        adopt(set, result.user, Boolean(result.isAdmin), Boolean(result.isSuperAdmin));
       } else {
-        set({ status: 'anonymous', user: null, isAdmin: false, context: null });
+        set({ status: 'anonymous', user: null, isAdmin: false, isSuperAdmin: false, context: null });
       }
     } catch {
-      set({ status: 'anonymous', user: null, isAdmin: false, context: null });
+      set({ status: 'anonymous', user: null, isAdmin: false, isSuperAdmin: false, context: null });
     }
   },
 
   async login(email, password, token) {
     set({ error: null });
     try {
-      const result = await apiRequest<{ user: KriSessionUser; isAdmin: boolean }>('/auth/login', {
+      const result = await apiRequest<{
+        token?: string;
+        user: KriSessionUser;
+        isAdmin: boolean;
+        isSuperAdmin?: boolean;
+      }>('/auth/login', {
         method: 'POST',
         body: { email, password, ...(token ? { token } : {}) },
       });
-      adopt(set, result.user, Boolean(result.isAdmin));
+      if (result.token) setStoredAuthToken(result.token);
+      adopt(set, result.user, Boolean(result.isAdmin), Boolean(result.isSuperAdmin));
     } catch (error) {
-      // A refusal carrying needsToken means the account is waiting on a code, so
-      // the form reveals the field. This is the fallback that saves a person whose
-      // probe never fired.
       const needsToken = Boolean((error as { needsToken?: boolean })?.needsToken);
       if (needsToken) set({ needsToken: true });
 
@@ -114,71 +156,68 @@ export const useAuth = create<KriAuthState>((set, get) => ({
     }
   },
 
-  async register(input) {
-    set({ error: null, notice: null });
+  async loginWithSso(input) {
+    set({ error: null });
     try {
       const result = await apiRequest<{
-        requiresVerification?: boolean;
-        email?: string;
-        user?: KriSessionUser;
-        isAdmin?: boolean;
-      }>('/auth/register', {
+        token?: string;
+        user: KriSessionUser;
+        isAdmin: boolean;
+        isSuperAdmin?: boolean;
+      }>('/auth/login', {
         method: 'POST',
-        body: input,
+        body: {
+          mode: 'sso',
+          ...(input.email ? { email: input.email.trim().toLowerCase() } : {}),
+          ...(input.ssoToken ? { ssoToken: input.ssoToken.trim() } : {}),
+        },
       });
-      if (result?.user) {
-        adopt(set, result.user, Boolean(result.isAdmin));
-        return;
-      }
-      // No session is issued. The account exists but is inert until the emailed
-      // code is redeemed, so the form moves to sign-in with the code field shown.
-      set({
-        status: 'anonymous',
-        user: null,
-        isAdmin: false,
-        context: null,
-        error: null,
-        needsToken: true,
-        notice: `We sent a verification code to ${input.email}. Enter it below to activate your account.`,
-      });
+      if (result.token) setStoredAuthToken(result.token);
+      adopt(set, result.user, Boolean(result.isAdmin), Boolean(result.isSuperAdmin));
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Registration failed.';
+      const message = error instanceof Error ? error.message : 'Group Intranet SSO sign-in failed.';
       set({ error: message });
       throw error;
     }
   },
 
-  async probeNeedsToken(email) {
+  async register(input) {
+    set({ error: null, notice: null });
     try {
-      const result = await apiRequest<{ needsToken: boolean }>('/auth/sign-in', {
-        query: { email },
+      const result = await apiRequest<{
+        user?: KriSessionUser;
+        isAdmin?: boolean;
+        isSuperAdmin?: boolean;
+      }>('/auth/register', {
+        method: 'POST',
+        body: input,
       });
-      const needs = Boolean(result?.needsToken);
-      // Only ever turns the field ON from a probe. A false result is not latched,
-      // because the probe may have fired against a half-typed address.
-      if (needs) set({ needsToken: true });
-      return needs;
-    } catch {
-      // A failed probe must not hide the field, and must not show it wrongly
-      // either; leaving the current state alone is the safe default.
-      return false;
+      if (result?.user) {
+        adopt(set, result.user, Boolean(result.isAdmin), Boolean(result.isSuperAdmin));
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Account provisioning failed.';
+      set({ error: message });
+      throw error;
     }
   },
 
+  async probeNeedsToken(_email) {
+    return false;
+  },
+
   async resendCode(email) {
-    // Always reports success. The endpoint returns an identical response whether
-    // or not the address exists, and surfacing a failure here would turn the
-    // button into an enumeration oracle.
     await apiRequest('/auth/resend-code', { method: 'POST', body: { email } });
   },
 
   async logout() {
+    setStoredAuthToken(null);
     try {
       await apiRequest('/auth/session', { method: 'POST' });
     } catch {
       /* clearing locally is enough */
     }
-    set({ status: 'anonymous', user: null, isAdmin: false, context: null, error: null });
+    set({ status: 'anonymous', user: null, isAdmin: false, isSuperAdmin: false, context: null, error: null });
   },
 
   clearError() {
@@ -194,26 +233,33 @@ export const useAuth = create<KriAuthState>((set, get) => ({
   },
 
   setUser(user, isAdmin) {
-    adopt(set, user, isAdmin);
+    adopt(set, user, isAdmin, user.isSuperAdmin);
   },
 
   async refresh() {
     if (get().status !== 'authenticated') return;
     try {
-      const result = await apiRequest<{ user: KriSessionUser; isAdmin: boolean }>('/auth/session');
-      if (result?.user) adopt(set, result.user, Boolean(result.isAdmin));
+      const result = await apiRequest<{
+        token?: string;
+        user: KriSessionUser;
+        isAdmin: boolean;
+        isSuperAdmin?: boolean;
+      }>('/auth/session');
+      if (result?.user) {
+        if (result.token) setStoredAuthToken(result.token);
+        adopt(set, result.user, Boolean(result.isAdmin), Boolean(result.isSuperAdmin));
+      }
     } catch {
-      // A failed refresh must not sign the user out; the next request will
-      // surface a 401 on its own terms.
+      // ignore refresh error
     }
   },
 }));
 
-// A 401 from any request drops the whole app back to the sign-in screen.
 onUnauthorised(() => {
   const current = useAuth.getState();
   if (current.status === 'authenticated') {
-    useAuth.setState({ status: 'anonymous', user: null, isAdmin: false, context: null });
+    setStoredAuthToken(null);
+    useAuth.setState({ status: 'anonymous', user: null, isAdmin: false, isSuperAdmin: false, context: null });
   }
 });
 

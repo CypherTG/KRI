@@ -31,6 +31,7 @@ import StarsIcon from '@mui/icons-material/Stars';
 import PeopleIcon from '@mui/icons-material/People';
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import GavelIcon from '@mui/icons-material/Gavel';
+import SecurityIcon from '@mui/icons-material/Security';
 import { useNavigate } from 'react-router-dom';
 import { KriContext } from '../../../../types/kri';
 import {
@@ -145,7 +146,7 @@ function AdminStatCard({
 
 export default function GemsAdminPage({ context }: Props) {
   const navigate = useNavigate();
-  const { setViewMode } = useGemsViewMode(context);
+  const { setViewMode, isAccountSuperAdmin } = useGemsViewMode(context);
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(true);
   const [reportOpen, setReportOpen] = useState(false);
@@ -328,6 +329,17 @@ export default function GemsAdminPage({ context }: Props) {
         >
           Executive BAM Report
         </Button>
+        {isAccountSuperAdmin && (
+          <Button
+            size="small"
+            variant="contained"
+            startIcon={<SecurityIcon />}
+            onClick={() => navigate('/gems/superadmin')}
+            sx={{ fontWeight: 700, borderRadius: 2, background: '#4F46E5', '&:hover': { background: '#4338CA' } }}
+          >
+            SuperAdmin Console
+          </Button>
+        )}
       </Box>
 
       <GemsReportDialog context={context} open={reportOpen} onClose={() => setReportOpen(false)} />

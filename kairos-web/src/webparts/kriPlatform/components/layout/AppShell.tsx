@@ -288,6 +288,7 @@ export default function AppShell({
     if (location.pathname === '/automations') return 'Automations';
     if (location.pathname === '/profile') return 'Profile';
     if (location.pathname === '/settings') return 'Settings';
+    if (location.pathname === '/admin') return 'Admin Console';
     if (location.pathname === '/superadmin') return 'Superadmin';
     if (location.pathname === '/help') return 'Help';
     if (location.pathname === '/add-contact') return 'Add contact';
@@ -325,7 +326,7 @@ export default function AppShell({
   }, []);
   const hasAdminPrivilege = isActualManagementAdminUser(currentUserProfile) || isAdminAccount;
   const isAdmin = hasAdminPrivilege && viewMode === 'admin';
-  const isSuperadmin = (currentUserProfile?.Email || context.pageContext.user.email || '').toLowerCase().trim() === 'mbello@konstructum.com';
+  const isSuperadmin = Boolean(context.session?.isSuperAdmin) || (currentUserProfile?.Email || context.pageContext.user.email || '').toLowerCase().trim() === 'mbello@konstructum.com';
   const switchKairosMode = (mode: KairosViewMode) => {
     setKairosViewMode(mode);
     setViewModeState(mode);
@@ -803,6 +804,13 @@ export default function AppShell({
             {NAV_SUPPORT.map((item) => (
               <NavItem key={item.text} item={item} isActive={location.pathname === item.path} onClick={() => handleNav(item.path)} />
             ))}
+            {isAdmin && (
+              <NavItem
+                item={{ text: 'Admin Console', icon: <SecurityIcon sx={{ color: '#4F46E5' }} />, path: '/admin' }}
+                isActive={location.pathname === '/admin'}
+                onClick={() => handleNav('/admin')}
+              />
+            )}
             {isSuperadmin && (
               <NavItem
                 item={{ text: 'Superadmin', icon: <SecurityIcon sx={{ color: '#6757EF' }} />, path: '/superadmin' }}

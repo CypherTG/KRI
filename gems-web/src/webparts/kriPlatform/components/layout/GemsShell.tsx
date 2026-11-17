@@ -28,6 +28,7 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import SettingsIcon from '@mui/icons-material/Settings';
 import RateReviewIcon from '@mui/icons-material/RateReview';
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
+import SecurityIcon from '@mui/icons-material/Security';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import LogoutIcon from '@mui/icons-material/Logout';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -47,6 +48,15 @@ type NavItem = {
   icon: React.ReactElement;
   helper: string;
 };
+
+const SUPERADMIN_NAV: NavItem[] = [
+  {
+    label: 'Superadmin Console',
+    path: '/gems/superadmin',
+    icon: <SecurityIcon />,
+    helper: 'User management, invite users, allowed domains & Group Intranet SSO.',
+  },
+];
 
 const ADMIN_NAV: NavItem[] = [
   {
@@ -124,6 +134,7 @@ const SUPPORT_NAV: NavItem[] = [
 ];
 
 function routeLabel(pathname: string): string {
+  if (pathname === '/gems/superadmin') return 'Super Administrator Governance';
   if (pathname === '/gems/admin') return 'Administrator Command Center';
   if (pathname.startsWith('/gems/stakeholders/')) return 'Stakeholder workspace';
   if (pathname.startsWith('/gems/agencies/')) return 'Agency workspace';
@@ -140,6 +151,7 @@ function routeLabel(pathname: string): string {
 }
 
 function routeSummary(pathname: string): string {
+  if (pathname === '/gems/superadmin') return 'Root governance console: user provisioning, role assignment, corporate domain authorization, and Group Intranet SSO.';
   if (pathname === '/gems/admin') return 'Dedicated Administrator workspace with integrated Reviewer queue, entity scoring oversight, stakeholder health, and audit governance.';
   if (pathname.startsWith('/gems/stakeholders/')) return 'Classify engagements and track stakeholder relationships.';
   if (pathname.startsWith('/gems/agencies/')) return 'Review agency-level engagement data, stakeholder rosters, and reference documents.';
@@ -252,7 +264,7 @@ export default function GemsShell({
   const navigate = useNavigate();
   const location = useLocation();
   const logout = useAuth((state) => state.logout);
-  const { isAccountAdmin, viewMode, setViewMode } = useGemsViewMode(context);
+  const { isAccountAdmin, isAccountSuperAdmin, viewMode, setViewMode } = useGemsViewMode(context);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState('');
 
@@ -399,6 +411,23 @@ export default function GemsShell({
       )}
 
       <Box sx={{ px: 2, py: 2, flex: 1, overflowY: 'auto' }}>
+        {isAccountSuperAdmin && (
+          <>
+            <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, color: '#6D28D9', letterSpacing: '0.12em', textTransform: 'uppercase', mb: 1 }}>
+              Root Governance
+            </Typography>
+            <NavSection
+              items={SUPERADMIN_NAV}
+              pathname={location.pathname}
+              onNavigate={(path) => {
+                navigate(path);
+                setMobileOpen(false);
+              }}
+            />
+            <Divider sx={{ my: 2 }} />
+          </>
+        )}
+
         {isAccountAdmin && viewMode === 'admin' && (
           <>
             <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, color: '#0D9488', letterSpacing: '0.12em', textTransform: 'uppercase', mb: 1 }}>

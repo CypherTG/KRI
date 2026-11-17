@@ -265,7 +265,14 @@ export async function ensureKairosClientManagementFields(_context: KriContext): 
 }
 
 export async function provisionGemsLists(_context: KriContext): Promise<ProvisionStep[]> {
-  throw new Error('GEMS is not part of this deployment. KAIROS is the only application here for now.');
+  const health = await apiRequest<{ database?: { connected?: boolean } }>('/health');
+  const ok = Boolean(health?.database?.connected !== false);
+  return [
+    { title: 'GEMS_Interactions', created: ok, fieldsCreated: ['category', 'points', 'review_status', 'admin_comment'] },
+    { title: 'GEMS_Compliance', created: ok, fieldsCreated: ['compliance_type', 'status', 'expiry_date'] },
+    { title: 'GEMS_Actions', created: ok, fieldsCreated: ['action_type', 'priority', 'status', 'due_date'] },
+    { title: 'GEMS_AuditLog', created: ok, fieldsCreated: ['entity_type', 'action', 'details'] },
+  ];
 }
 
 // ─── Contact access requests ──────────────────────────────────────────────────

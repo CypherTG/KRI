@@ -430,8 +430,8 @@ export default function SettingsPage({
               </Typography>
               <Typography sx={{ fontSize: '0.8rem', color: theme.palette.text.secondary, mt: 0.25 }}>
                 {isAdmin
-                  ? 'As an administrator you can grant admin rights and deactivate accounts. New accounts are created by registration, so anyone with an approved company email address can sign themselves up.'
-                  : 'Ask an administrator if you need admin rights or your account needs to be deactivated.'}
+                  ? 'As an administrator you can review accounts here. New accounts and domain access are provisioned exclusively by the Super Administrator.'
+                  : 'Ask your Super Administrator if you need account access, role changes, or deactivation.'}
               </Typography>
             </Box>
             {isAdmin && (

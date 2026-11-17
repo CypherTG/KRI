@@ -14,6 +14,8 @@ import UserProfile from './profile/UserProfile';
 import HelpCenter from './shared/HelpCenter';
 import SettingsPage from './settings/SettingsPage';
 import SuperadminPage from './superadmin/SuperadminPage';
+import KairosAdminPage from './admin/KairosAdminPage';
+import KairosRoleGuard from './shared/KairosRoleGuard';
 import { getCurrentUserProfile, seedKRIUsersFromSharePointIdentity, importClientsFromExcel, ImportResult } from '../services/graphApi';
 import { seedLookupListsFromCurrentRegistry } from '../services/sharepointProvisioning';
 import { useStore } from '../store/useStore';
@@ -261,7 +263,22 @@ export default function App({ context }: Props) {
                 />
               )}
             />
-            <Route path="/superadmin" element={<SuperadminPage context={context} />} />
+            <Route
+              path="/admin"
+              element={(
+                <KairosRoleGuard context={context} requiredRole="admin">
+                  <KairosAdminPage context={context} />
+                </KairosRoleGuard>
+              )}
+            />
+            <Route
+              path="/superadmin"
+              element={(
+                <KairosRoleGuard context={context} requiredRole="superadmin">
+                  <SuperadminPage context={context} />
+                </KairosRoleGuard>
+              )}
+            />
             <Route path="*" element={<Navigate to={homeRoute} replace />} />
           </Routes>
         </AppShell>

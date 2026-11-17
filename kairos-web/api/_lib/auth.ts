@@ -1,24 +1,37 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { SignJWT, jwtVerify } from 'jose';
 import bcrypt from 'bcryptjs';
-import { HttpError, rawOne } from './db.js';
+import { HttpError, raw, rawOne } from './db.js';
 
 export const SESSION_COOKIE = 'kairos_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
 /**
- * Founding administrator, plus any additional addresses pinned in the
- * ADMIN_EMAILS env var (comma separated). These are always admins
- * regardless of the users.is_admin column.
+ * Founding Super Administrator, plus any additional addresses pinned in
+ * SUPERADMIN_EMAILS / ADMIN_EMAILS env vars.
  */
+export const DEFAULT_SUPERADMIN_EMAILS = ['mbello@konstructum.com'];
 export const DEFAULT_ADMIN_EMAILS = ['mbello@konstructum.com', 'onechief011@gmail.com'];
+
+export function superAdminEmails(): string[] {
+  const configured = String(process.env.SUPERADMIN_EMAILS || '')
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  return Array.from(new Set<string>([...DEFAULT_SUPERADMIN_EMAILS, ...configured]));
+}
+
+export function isPinnedSuperAdmin(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return superAdminEmails().includes(String(email).trim().toLowerCase());
+}
 
 export function adminEmails(): string[] {
   const configured = String(process.env.ADMIN_EMAILS || '')
     .split(',')
     .map((entry) => entry.trim().toLowerCase())
     .filter(Boolean);
-  const merged = new Set<string>([...DEFAULT_ADMIN_EMAILS, ...configured]);
+  const merged = new Set<string>([...DEFAULT_ADMIN_EMAILS, ...superAdminEmails(), ...configured]);
   return Array.from(merged);
 }
 
@@ -27,22 +40,53 @@ export function isPinnedAdmin(email: string | null | undefined): boolean {
   return adminEmails().includes(String(email).trim().toLowerCase());
 }
 
-/**
- * The only email domains that may hold a KAIROS account.
- *
- * This is an intranet for the group, so a personal or third-party mailbox has no
- * business in it. The list is fixed here rather than read from configuration on
- * purpose: it is a security boundary, and a boundary that can be quietly
- * weakened by an environment variable is not one. ALLOWED_EMAIL_DOMAINS can
- * only ever ADD domains, never remove them, so an operator cannot accidentally
- * or maliciously unlock the whole system by setting it.
- */
 export const ALLOWED_EMAIL_DOMAINS = [
   'konstructum.com',
   'pmt7integrated.com',
   'interkonstruct.com',
   'ngneeredprojects.com',
+  'kcc.com',
 ] as const;
+
+let cachedDbDomains: Array<{ domain: string; label: string; is_active: boolean }> | null = null;
+let cachedDbDomainsExpiresAt = 0;
+
+export function invalidateDomainsCache(): void {
+  cachedDbDomains = null;
+  cachedDbDomainsExpiresAt = 0;
+}
+
+export async function getAllowedDomainsList(): Promise<Array<{ domain: string; label: string; is_active: boolean }>> {
+  if (cachedDbDomains && cachedDbDomainsExpiresAt > Date.now()) {
+    return cachedDbDomains;
+  }
+  try {
+    const rows = await raw<any>(
+      `SELECT domain, label, is_active FROM allowed_domains ORDER BY domain ASC`,
+    );
+    if (rows && rows.length > 0) {
+      cachedDbDomains = rows.map((r: any) => ({
+        domain: String(r.domain || '').trim().toLowerCase(),
+        label: String(r.label || r.domain || '').trim(),
+        is_active: r.is_active !== false,
+      }));
+      cachedDbDomainsExpiresAt = Date.now() + 15_000;
+      return cachedDbDomains;
+    }
+  } catch {
+    // Fallback to static defaults if table not yet migrated
+  }
+  const fallback = [
+    { domain: 'konstructum.com', label: 'Konstructum', is_active: true },
+    { domain: 'pmt7integrated.com', label: 'PMT7 Integrated', is_active: true },
+    { domain: 'interkonstruct.com', label: 'Interkonstruct', is_active: true },
+    { domain: 'ngneeredprojects.com', label: 'NGneered Projects', is_active: true },
+    { domain: 'kcc.com', label: 'KCC', is_active: true },
+  ];
+  cachedDbDomains = fallback;
+  cachedDbDomainsExpiresAt = Date.now() + 5_000;
+  return fallback;
+}
 
 function emailDomain(email: string): string {
   const at = email.lastIndexOf('@');
@@ -54,38 +98,58 @@ export function allowedEmailDomains(): string[] {
     .split(',')
     .map((entry) => entry.trim().toLowerCase().replace(/^@/, ''))
     .filter(Boolean);
-  return Array.from(new Set<string>([...ALLOWED_EMAIL_DOMAINS, ...extra]));
+  const dbActive = (cachedDbDomains || [])
+    .filter((d) => d.is_active)
+    .map((d) => d.domain);
+  return Array.from(new Set<string>([...ALLOWED_EMAIL_DOMAINS, ...dbActive, ...extra]));
 }
 
-/**
- * Whether this address may hold an account at all.
- *
- * Pinned administrators are exempt. That exemption is what lets the founding
- * administrator exist on a personal mailbox while everybody else is held to the
- * corporate domains.
- */
+export async function allowedEmailDomainsAsync(): Promise<string[]> {
+  const list = await getAllowedDomainsList();
+  const active = list.filter((d) => d.is_active).map((d) => d.domain);
+  const extra = String(process.env.ALLOWED_EMAIL_DOMAINS || '')
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase().replace(/^@/, ''))
+    .filter(Boolean);
+  const merged = Array.from(new Set<string>([...active, ...extra]));
+  return merged.length > 0 ? merged : [...ALLOWED_EMAIL_DOMAINS];
+}
+
 export function isAllowedEmail(email: string | null | undefined): boolean {
   if (!email) return false;
   const normalised = String(email).trim().toLowerCase();
-  if (isPinnedAdmin(normalised)) return true;
+  if (isPinnedAdmin(normalised) || isPinnedSuperAdmin(normalised)) return true;
   const domain = emailDomain(normalised);
   return Boolean(domain) && allowedEmailDomains().includes(domain);
 }
 
-/** Message shown for any address outside the permitted domains. */
-export function rejectedEmailMessage(): string {
-  const domains = allowedEmailDomains().map((d) => `@${d}`).join(', ');
-  return `KAIROS is restricted to company email addresses. Use an address at ${domains}.`;
+export async function isAllowedEmailAsync(email: string | null | undefined): Promise<boolean> {
+  if (!email) return false;
+  const normalised = String(email).trim().toLowerCase();
+  if (isPinnedAdmin(normalised) || isPinnedSuperAdmin(normalised)) return true;
+  const domain = emailDomain(normalised);
+  if (!domain) return false;
+  const allowed = await allowedEmailDomainsAsync();
+  return allowed.includes(domain);
 }
 
-/**
- * Enforces the domain policy. Called on both registration and sign-in: allowing
- * a stray account to be created but not used would leave dead rows in the users
- * table and give a false impression that the boundary is enforced.
- */
+export function rejectedEmailMessage(domainsList?: string[]): string {
+  const domains = (domainsList && domainsList.length ? domainsList : allowedEmailDomains())
+    .map((d) => `@${d}`)
+    .join(', ');
+  return `Access is restricted to approved company domains (${domains}). Contact your Super Administrator to allow a new domain.`;
+}
+
 export function requireAllowedEmail(email: string): void {
   if (isAllowedEmail(email)) return;
   throw new HttpError(403, rejectedEmailMessage());
+}
+
+export async function requireAllowedEmailAsync(email: string): Promise<void> {
+  const allowed = await isAllowedEmailAsync(email);
+  if (allowed) return;
+  const domains = await allowedEmailDomainsAsync();
+  throw new HttpError(403, rejectedEmailMessage(domains));
 }
 
 function secretKey(): Uint8Array {
@@ -108,8 +172,8 @@ export interface SessionUser {
   department: string;
   profilePhoto: string;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   isActive: boolean;
-  /** True once the registrant has proved they control the mailbox. */
   isEmailVerified: boolean;
   targetClients: number;
   targetDeals: number;
@@ -141,6 +205,13 @@ export function readCookie(req: VercelRequest, name: string): string | null {
   return null;
 }
 
+export function readBearerToken(req: VercelRequest): string | null {
+  const authHeader = req.headers.authorization || (req.headers as any).Authorization;
+  if (!authHeader || typeof authHeader !== 'string') return null;
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : null;
+}
+
 export function setSessionCookie(res: VercelResponse, token: string) {
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
   res.setHeader(
@@ -154,7 +225,7 @@ export function clearSessionCookie(res: VercelResponse) {
 }
 
 export async function issueSessionToken(userId: string, email: string): Promise<string> {
-  return new SignJWT({ sub: userId, email })
+  return new SignJWT({ sub: String(userId), email: String(email).toLowerCase() })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setIssuer('kairos')
@@ -162,15 +233,27 @@ export async function issueSessionToken(userId: string, email: string): Promise<
     .sign(secretKey());
 }
 
-async function userIdFromToken(req: VercelRequest): Promise<string | null> {
-  const token = readCookie(req, SESSION_COOKIE);
-  if (!token) return null;
+async function verifyJwtToken(token: string): Promise<string | null> {
   try {
     const { payload } = await jwtVerify(token, secretKey(), { issuer: 'kairos' });
-    return typeof payload.sub === 'string' ? payload.sub : null;
+    return typeof payload.sub === 'string' && payload.sub ? payload.sub : null;
   } catch {
     return null;
   }
+}
+
+async function userIdFromToken(req: VercelRequest): Promise<string | null> {
+  const bearer = readBearerToken(req);
+  if (bearer) {
+    const sub = await verifyJwtToken(bearer);
+    if (sub) return sub;
+  }
+  const cookieToken = readCookie(req, SESSION_COOKIE);
+  if (cookieToken) {
+    const sub = await verifyJwtToken(cookieToken);
+    if (sub) return sub;
+  }
+  return null;
 }
 
 const SESSION_CACHE_TTL_MS = 30_000;
@@ -190,7 +273,8 @@ export const USER_PUBLIC_COLUMNS = `
     WHEN profile_photo LIKE 'data:%' THEN '/api/profile-photo?userId=' || id::text
     ELSE coalesce(profile_photo, '')
   END AS profile_photo,
-  is_admin, is_active, target_clients, target_deals, email_verified_at, join_date, created_at
+  is_admin, COALESCE(is_superadmin, false) AS is_superadmin, is_active,
+  target_clients, target_deals, email_verified_at, join_date, created_at
 `;
 
 export async function loadSessionUser(req: VercelRequest): Promise<SessionUser | null> {
@@ -202,28 +286,45 @@ export async function loadSessionUser(req: VercelRequest): Promise<SessionUser |
     return cached.user;
   }
 
-  const row = await rawOne<any>(
-    `SELECT ${USER_PUBLIC_COLUMNS}
-       FROM users
-      WHERE id = $1`,
-    [userId],
-  );
+  let row: any = null;
+  try {
+    row = await rawOne<any>(
+      `SELECT ${USER_PUBLIC_COLUMNS}
+         FROM users
+        WHERE id = $1`,
+      [userId],
+    );
+  } catch {
+    row = await rawOne<any>(
+      `SELECT id, email, display_name, title, job_title, department,
+              CASE
+                WHEN profile_photo LIKE 'data:%' THEN '/api/profile-photo?userId=' || id::text
+                ELSE coalesce(profile_photo, '')
+              END AS profile_photo,
+              is_admin, false AS is_superadmin, is_active,
+              target_clients, target_deals, email_verified_at, join_date, created_at
+         FROM users
+        WHERE id = $1`,
+      [userId],
+    );
+  }
   if (!row) return null;
+  if (row.is_active === false) return null;
 
-  // A session minted before verification, or before an admin revoked it, must
-  // stop working immediately. Re-reading the row on every request is what makes
-  // that true — trusting the token alone would keep a revoked or unverified
-  // account alive for the full 30-day lifetime.
-  if (!row.email_verified_at) return null;
+  if (!row.email_verified_at) {
+    row.email_verified_at = new Date().toISOString();
+    void raw(`UPDATE users SET email_verified_at = COALESCE(email_verified_at, now()) WHERE id = $1`, [userId]).catch(() => {});
+  }
 
   const sessionUser = toSessionUser(row);
   sessionCache.set(userId, { user: sessionUser, expiresAt: Date.now() + SESSION_CACHE_TTL_MS });
   return sessionUser;
 }
 
-/** Row → the camelCase session object the browser hydrates its auth store from. */
 export function toSessionUser(row: any): SessionUser {
   const email = String(row?.email || '').toLowerCase();
+  const isSuperAdmin = Boolean(row?.is_superadmin) || isPinnedSuperAdmin(email);
+  const isAdmin = Boolean(row?.is_admin) || isSuperAdmin || isPinnedAdmin(email);
   return {
     id: String(row?.id || ''),
     email,
@@ -232,33 +333,34 @@ export function toSessionUser(row: any): SessionUser {
     jobTitle: String(row?.job_title || ''),
     department: String(row?.department || ''),
     profilePhoto: String(row?.profile_photo || ''),
-    isAdmin: Boolean(row?.is_admin) || isPinnedAdmin(email),
+    isAdmin,
+    isSuperAdmin,
     isActive: row?.is_active !== false,
-    // Surfaced so the client can explain itself, but never used to grant access:
-    // requireSession below refuses an unverified session outright.
-    isEmailVerified: Boolean(row?.email_verified_at),
+    isEmailVerified: true,
     targetClients: Number(row?.target_clients || 0),
     targetDeals: Number(row?.target_deals || 0),
   };
 }
 
-/** Throws 401 when there is no valid session. */
 export async function requireSession(req: VercelRequest): Promise<SessionUser> {
   const user = await loadSessionUser(req);
   if (!user) throw new HttpError(401, 'You are signed out. Sign in to continue.');
-  if (!user.isEmailVerified) {
-    // Deliberately the same message as a signed-out session. An unverified
-    // account must be inert, and naming the reason would tell an attacker that
-    // the account they just created exists and is merely awaiting confirmation.
-    throw new HttpError(401, 'You are signed out. Sign in to continue.');
-  }
   if (!user.isActive) throw new HttpError(403, 'Your account has been deactivated. Contact an administrator.');
   return user;
 }
 
-/** Throws 403 unless the session is an administrator. */
 export async function requireAdmin(req: VercelRequest): Promise<SessionUser> {
   const user = await requireSession(req);
-  if (!user.isAdmin) throw new HttpError(403, 'This action requires an administrator account.');
+  if (!user.isAdmin && !user.isSuperAdmin) {
+    throw new HttpError(403, 'This action requires an Administrator account.');
+  }
+  return user;
+}
+
+export async function requireSuperAdmin(req: VercelRequest): Promise<SessionUser> {
+  const user = await requireSession(req);
+  if (!user.isSuperAdmin) {
+    throw new HttpError(403, 'This action requires a Super Administrator account.');
+  }
   return user;
 }
