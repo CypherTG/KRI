@@ -111,10 +111,10 @@ export default function GemsStakeholderDetail({ context }: Props) {
       <Box sx={{ p: 4, maxWidth: 640, mx: 'auto', mt: 6 }}>
         <Paper sx={{ p: 4, borderRadius: 3, textAlign: 'center', border: '1px solid #E8ECF0' }}>
           <Typography sx={{ fontWeight: 800, fontSize: '1.15rem', color: '#1A1D23', mb: 1 }}>
-            Stakeholder Not Found or Out of Scope
+            Stakeholder Not Found
           </Typography>
           <Typography sx={{ fontSize: '0.86rem', color: '#6B7280', mb: 3 }}>
-            This contact either does not exist or does not belong to one of the eight monitored government agencies (NUPRC, NUIMS, NCDMB, NEPL, NNPC, NIMASA, ENSERV, NMDPRA).
+            This stakeholder record no longer exists (for example, if contacts were recently purged or re-imported) or could not be loaded. Open the Stakeholder Registry to select the current record.
           </Typography>
           <Button
             variant="contained"
