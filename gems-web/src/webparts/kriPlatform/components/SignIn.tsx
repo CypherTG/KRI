@@ -203,20 +203,6 @@ export default function SignIn() {
           >
             GEMS
           </Typography>
-          <Box
-            sx={{
-              px: 1,
-              py: 0.25,
-              borderRadius: 1,
-              border: '1px solid rgba(255,255,255,0.14)',
-              fontSize: '0.64rem',
-              fontFamily: '"JetBrains Mono", monospace',
-              color: 'rgba(248,250,252,0.7)',
-              letterSpacing: '0.06em',
-            }}
-          >
-            PROJECT ONYX
-          </Box>
         </Stack>
 
         {/* Center Editorial Title & Minimal Ledger */}
@@ -232,7 +218,7 @@ export default function SignIn() {
               mb: 2,
             }}
           >
-            Regulatory advocacy &amp; compliance command.
+            Global Engagement Measurement System.
           </Typography>
 
           <Typography
@@ -243,7 +229,7 @@ export default function SignIn() {
               mb: 3.5,
             }}
           >
-            Business Alignment Meeting (BAM) scoring, stakeholder rosters, and permit governance across all partner agencies and organisations.
+            A unified platform for tracking stakeholder interactions, measuring relationship progress, and managing agency compliance.
           </Typography>
 
           {/* Classic 4-Row Gemstone Ledger */}
@@ -488,44 +474,9 @@ export default function SignIn() {
                     ) : undefined,
                   }}
                   helperText={
-                    !emailAllowed ? `Permitted corporate domains: ${domainHint}` : undefined
+                    !emailAllowed ? 'Use an authorized corporate email address.' : undefined
                   }
                 />
-
-                {/* Dynamic Allowed Domains Quick-Select */}
-                <Stack direction="row" spacing={0.6} useFlexGap flexWrap="wrap" sx={{ mt: 0.8 }}>
-                  {domains.map((d) => {
-                    const active = email.toLowerCase().endsWith(`@${d.domain.toLowerCase()}`);
-                    return (
-                      <Box
-                        key={d.domain}
-                        component="button"
-                        type="button"
-                        onClick={() => applyDomain(d.domain)}
-                        sx={{
-                          px: 0.9,
-                          py: 0.3,
-                          fontSize: '0.68rem',
-                          fontFamily: '"JetBrains Mono", monospace',
-                          borderRadius: 1,
-                          border: `1px solid ${active ? textPrimary : border}`,
-                          background: active
-                            ? alpha(textPrimary, 0.06)
-                            : 'transparent',
-                          color: active ? textPrimary : textMuted,
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                          '&:hover': {
-                            borderColor: textPrimary,
-                            color: textPrimary,
-                          },
-                        }}
-                      >
-                        @{d.domain}
-                      </Box>
-                    );
-                  })}
-                </Stack>
               </Box>
 
               <TextField

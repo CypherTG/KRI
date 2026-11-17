@@ -464,44 +464,9 @@ export default function SignIn() {
                     ) : undefined,
                   }}
                   helperText={
-                    !emailAllowed ? `Permitted corporate domains: ${domainHint}` : undefined
+                    !emailAllowed ? 'Use an authorized corporate email address.' : undefined
                   }
                 />
-
-                {/* Dynamic Allowed Domains Quick-Select */}
-                <Stack direction="row" spacing={0.6} useFlexGap flexWrap="wrap" sx={{ mt: 0.8 }}>
-                  {domains.map((d) => {
-                    const active = email.toLowerCase().endsWith(`@${d.domain.toLowerCase()}`);
-                    return (
-                      <Box
-                        key={d.domain}
-                        component="button"
-                        type="button"
-                        onClick={() => applyDomain(d.domain)}
-                        sx={{
-                          px: 0.9,
-                          py: 0.3,
-                          fontSize: '0.68rem',
-                          fontFamily: '"JetBrains Mono", monospace',
-                          borderRadius: 1,
-                          border: `1px solid ${active ? textPrimary : border}`,
-                          background: active
-                            ? alpha(textPrimary, 0.06)
-                            : 'transparent',
-                          color: active ? textPrimary : textMuted,
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                          '&:hover': {
-                            borderColor: textPrimary,
-                            color: textPrimary,
-                          },
-                        }}
-                      >
-                        @{d.domain}
-                      </Box>
-                    );
-                  })}
-                </Stack>
               </Box>
 
               <TextField
