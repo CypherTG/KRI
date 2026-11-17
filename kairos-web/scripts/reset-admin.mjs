@@ -25,8 +25,8 @@ async function run() {
        SET is_admin = true,
            is_active = true,
            job_title = 'Super Administrator',
-           title = 'Muyiwa Bello',
-           display_name = 'Muyiwa Bello',
+           title = 'Muyis Bello',
+           display_name = 'Muyis Bello',
            email_verified_at = now()
      WHERE lower(email) = 'mbello@konstructum.com'
     RETURNING id, email, display_name, is_admin, is_active

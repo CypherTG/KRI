@@ -177,7 +177,7 @@ export default function GemsEmployeeLeaderboard({ users, interactions, onJumpToR
       const rawName = String(interaction.TargetUser || interaction.LoggedBy || 'Unassigned').trim();
       let matchedKey = normalizePersonKey(rawName);
 
-      // Try fuzzy match against seeded users (e.g., "Muyiwa Bello" vs "mbello@konstructum.com")
+      // Try fuzzy match against seeded users (e.g., "Muyis Bello" vs "mbello@konstructum.com")
       for (const [existingKey, existingRow] of map.entries()) {
         const lowerExisting = existingRow.name.toLowerCase();
         const lowerRaw = rawName.toLowerCase();
