@@ -22,43 +22,21 @@ export function permissionsMode(): PermissionsMode {
 }
 
 export function canSeeEverything(user: SessionUser): boolean {
-  if (permissionsMode() === 'open') return true;
-  return user.isAdmin;
+  return Boolean(user.isAdmin || user.isSuperAdmin);
 }
 
 /**
- * A reusable SQL predicate restricting a query to the rows a user may read.
- *
- * @param alias  table alias the predicate is applied to, e.g. 'c'
- * @param owner  SQL expressions for the ownership columns on that alias
- * @param start  first placeholder index to consume
- * @param params mutable array the placeholders are pushed onto
- * @param user   the requesting session
+ * Global read visibility — every signed-in user can view every contact in the
+ * registry regardless of who imported or owns it.
  */
 export function scopeSql(
-  user: SessionUser,
-  alias: string,
-  owner: { primary: string; secondary: string; created: string },
-  start: number,
-  params: any[],
+  _user: SessionUser,
+  _alias: string,
+  _owner: { primary: string; secondary: string; created: string },
+  _start: number,
+  _params: any[],
 ): string {
-  if (canSeeEverything(user)) return 'TRUE';
-  const uidPlaceholder = `$${start}`;
-  const emailPlaceholder = `$${start + 1}`;
-  params.push(user.id, user.email);
-  return `(
-    ${alias}.${owner.primary} = ${uidPlaceholder}
-    OR ${alias}.${owner.secondary} = ${uidPlaceholder}
-    OR ${alias}.${owner.created} = ${uidPlaceholder}
-    OR EXISTS (
-      SELECT 1
-        FROM contact_access_requests r
-       WHERE r.client_id = ${alias}.id
-         AND lower(r.requester_key) = ${emailPlaceholder}
-         AND r.status = 'Approved'
-         AND (r.expires_at IS NULL OR r.expires_at > now())
-    )
-  )`;
+  return 'TRUE';
 }
 
 /**
@@ -147,16 +125,7 @@ export async function engagementOwnedBy(user: SessionUser, engagementId: string)
 }
 
 /** Bulk visibility check — returns the subset of client ids the user may read. */
-export async function visibleClientIds(user: SessionUser, clientIds: string[]): Promise<Set<string>> {
+export async function visibleClientIds(_user: SessionUser, clientIds: string[]): Promise<Set<string>> {
   const unique = Array.from(new Set(clientIds.filter(Boolean)));
-  if (!unique.length) return new Set();
-  if (canSeeEverything(user)) return new Set(unique);
-  const rows = await raw<{ id: string }>(
-    `SELECT c.id
-       FROM clients c
-      WHERE c.id = ANY($1::text[])
-        AND (${scopeSql(user, 'c', CLIENT_OWNERS, 2, [unique, user.id, user.email])})`,
-    [unique, user.id, user.email],
-  );
-  return new Set(rows.map((row) => row.id));
+  return new Set(unique);
 }
