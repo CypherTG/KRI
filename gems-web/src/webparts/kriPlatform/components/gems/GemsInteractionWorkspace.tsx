@@ -177,6 +177,7 @@ type Props = {
   initialUsers?: IKRIUser[];
   showLeaderboard?: boolean;
   hideLogForm?: boolean;
+  showEntityDashboards?: boolean;
 };
 
 function clientLabel(client: Partial<IClient> | null | undefined): string {
@@ -224,17 +225,61 @@ function getCategoryMeta(category: string) {
 
 function dashboardRows(interactions: GemsInteractionRecord[], arm: BusinessArm) {
   const targets = AGENCY_TARGETS[arm];
-  return targets.map((target) => {
-    const rows = interactions.filter((item) => item.BusinessArm === arm && agencyMatchesTarget(item.Agency, target.agency) && currentMonthMatches(item.LoggedAt));
-    const points = rows.reduce((sum, row) => sum + Number(row.Points || 0), 0);
-    const contacts = new Set(rows.map((row) => row.ClientID).filter(Boolean)).size;
-    return {
-      ...target,
-      points,
-      contacts,
-      pct: target.target > 0 ? Math.min((points / target.target) * 100, 100) : 0,
-    };
+  const monthRows = interactions.filter(
+    (item) => item.BusinessArm === arm && currentMonthMatches(item.LoggedAt),
+  );
+
+  const byOrg = new Map<
+    string,
+    { agency: string; target: number; points: number; clientIds: Set<string> }
+  >();
+
+  // Seed configured target agencies so baseline targets remain visible when 0 logged
+  targets.forEach((t) => {
+    byOrg.set(t.agency.toLowerCase(), {
+      agency: t.agency,
+      target: t.target,
+      points: 0,
+      clientIds: new Set<string>(),
+    });
   });
+
+  // Aggregate ALL interactions for this entity & month by company/agency
+  monthRows.forEach((item) => {
+    const rawOrg = String(item.Agency || item.CompanyName || '').trim() || 'General';
+    const matchedTarget = targets.find((t) => agencyMatchesTarget(rawOrg, t.agency));
+    const displayOrg = matchedTarget
+      ? matchedTarget.agency
+      : normalizeGemsAgency(rawOrg) || rawOrg;
+    const key = displayOrg.toLowerCase();
+
+    const existing = byOrg.get(key) || {
+      agency: displayOrg,
+      target: matchedTarget?.target ?? 20,
+      points: 0,
+      clientIds: new Set<string>(),
+    };
+    existing.points += Number(item.Points || 0);
+    if (item.ClientID) existing.clientIds.add(String(item.ClientID));
+    byOrg.set(key, existing);
+  });
+
+  return Array.from(byOrg.values())
+    .map((entry) => ({
+      agency: entry.agency,
+      target: entry.target,
+      points: entry.points,
+      contacts: entry.clientIds.size,
+      pct: entry.target > 0 ? Math.min((entry.points / entry.target) * 100, 100) : 0,
+    }))
+    .sort(
+      (a, b) =>
+        b.points - a.points
+        || b.contacts - a.contacts
+        || b.target - a.target
+        || a.agency.localeCompare(b.agency),
+    )
+    .slice(0, 5);
 }
 
 function currentUserMatches(context: KriContext, user: IKRIUser): boolean {
@@ -297,6 +342,7 @@ export default function GemsInteractionWorkspace({
   initialUsers,
   showLeaderboard = true,
   hideLogForm = false,
+  showEntityDashboards = true,
 }: Props) {
   const navigate = useNavigate();
   const [clients, setClients] = useState<IClient[]>([]);
@@ -465,8 +511,11 @@ export default function GemsInteractionWorkspace({
 
   const entityDashboards = BUSINESS_ARMS.map((arm) => {
     const rows = dashboardRows(interactions, arm);
-    const current = rows.reduce((sum, row) => sum + row.points, 0);
-    const contacts = rows.reduce((sum, row) => sum + row.contacts, 0);
+    const armMonthInteractions = interactions.filter(
+      (item) => item.BusinessArm === arm && currentMonthMatches(item.LoggedAt),
+    );
+    const current = armMonthInteractions.reduce((sum, row) => sum + Number(row.Points || 0), 0);
+    const contacts = new Set(armMonthInteractions.map((row) => row.ClientID).filter(Boolean)).size;
     return {
       arm,
       rows,
@@ -602,6 +651,7 @@ export default function GemsInteractionWorkspace({
         </Stack>
       </Paper>
 
+      {showEntityDashboards && (
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(4, minmax(0, 1fr))' }, gap: 2 }}>
         {entityDashboards.map((dashboard) => (
           <Paper key={dashboard.arm} sx={{ p: 2.5, borderRadius: 3, border: '1px solid #E8ECF0' }}>
@@ -645,6 +695,7 @@ export default function GemsInteractionWorkspace({
           </Paper>
         ))}
       </Box>
+      )}
 
       <Paper sx={{ p: 2.5, borderRadius: 3, border: '1px solid #E8ECF0' }}>
         <Typography sx={{ fontWeight: 900, color: '#1A1D23', mb: 1.5 }}>Government Relations Framework</Typography>

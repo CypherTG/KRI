@@ -252,6 +252,7 @@ export default function GemsStakeholderDetail({ context }: Props) {
                 title="GEMS Scoring Workspace"
                 description="Classify this government stakeholder as Crown Jewel, Pearl, Coral, or Ruby. Meeting notes serve as justification for the classification."
                 showLeaderboard={false}
+                showEntityDashboards={false}
               />
             )}
 
