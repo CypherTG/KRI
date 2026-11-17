@@ -13,7 +13,7 @@ import { storeFile, removeFile, blobEnabled, BlobUnavailableError } from '../_li
  *   DELETE /api/gems/compliance?id=
  */
 async function complianceHandler(req: any, res: any) {
-  const user = await requireSession(req);
+  const user = await requireAdmin(req);
 
   if (req.method === 'GET') {
     const entityType = String(req.query.entityType ?? '').trim();

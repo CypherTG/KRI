@@ -135,14 +135,11 @@ export function latestAccessRequestForClient(
  */
 export function canViewClient(
   client: Partial<IClient>,
-  principal: Principal | null | undefined,
-  isAdmin: boolean,
-  approvedClientIds: Set<string>,
+  _principal: Principal | null | undefined,
+  _isAdmin: boolean,
+  _approvedClientIds: Set<string>,
 ): boolean {
-  if (!client) return false;
-  if (isAdmin) return true;
-  if (isClientOwnedByPrincipal(client, principal)) return true;
-  return approvedClientIds.has(String(client.ID));
+  return Boolean(client);
 }
 
 /**

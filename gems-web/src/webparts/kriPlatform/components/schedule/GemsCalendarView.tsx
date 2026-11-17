@@ -12,6 +12,7 @@ import TodayIcon from '@mui/icons-material/Today';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import { getGemsInteractions, GemsInteractionRecord } from '../../services/gemsApi';
 import { getComplianceRecords, GemsComplianceRecord, getActionRecords, GemsActionRecord } from '../../services/gemsApi';
+import { isActualGemsAdmin } from '../../utils/gemsRbac';
 import { Link as RouterLink } from 'react-router-dom';
 import { Link } from '@mui/material';
 
@@ -78,7 +79,9 @@ export default function GemsCalendarView({ context }: Props) {
     let cancelled = false;
     Promise.all([
       getGemsInteractions(context).catch(() => [] as GemsInteractionRecord[]),
-      getComplianceRecords(context).catch(() => [] as GemsComplianceRecord[]),
+      isActualGemsAdmin(context)
+        ? getComplianceRecords(context).catch(() => [] as GemsComplianceRecord[])
+        : Promise.resolve([] as GemsComplianceRecord[]),
       getActionRecords(context).catch(() => [] as GemsActionRecord[]),
     ]).then(([i, c, a]) => {
       if (cancelled) return;

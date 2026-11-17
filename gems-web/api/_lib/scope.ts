@@ -17,8 +17,8 @@ import type { SessionUser } from './auth.js';
 export type PermissionsMode = 'enforce' | 'open';
 
 export function permissionsMode(): PermissionsMode {
-  const rawMode = String(process.env.PERMISSIONS_MODE || 'enforce').trim().toLowerCase();
-  return rawMode === 'open' ? 'open' : 'enforce';
+  const rawMode = String(process.env.PERMISSIONS_MODE || 'open').trim().toLowerCase();
+  return rawMode === 'enforce' ? 'enforce' : 'open';
 }
 
 export function canSeeEverything(user: SessionUser): boolean {

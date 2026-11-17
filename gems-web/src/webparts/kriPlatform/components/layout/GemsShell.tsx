@@ -71,6 +71,12 @@ const ADMIN_NAV: NavItem[] = [
     icon: <RateReviewIcon />,
     helper: 'Dedicated Reviewer page to validate or reclassify interactions.',
   },
+  {
+    label: 'Compliance',
+    path: '/gems/compliance',
+    icon: <GavelIcon />,
+    helper: 'Permits, licences, and regulatory obligation tracking (Admin only).',
+  },
 ];
 
 const USER_PRIMARY_NAV: NavItem[] = [
@@ -91,12 +97,6 @@ const USER_PRIMARY_NAV: NavItem[] = [
     path: '/gems/agencies',
     icon: <BusinessIcon />,
     helper: 'Agencies, organisations, and stakeholder rosters.',
-  },
-  {
-    label: 'Compliance',
-    path: '/gems/compliance',
-    icon: <GavelIcon />,
-    helper: 'Permits, licences, and regulatory obligation tracking.',
   },
   {
     label: 'Actions',
@@ -290,7 +290,7 @@ export default function GemsShell({
         navigate('/gems/admin');
       }
     } else {
-      if (location.pathname === '/gems/admin' || location.pathname === '/gems/review') {
+      if (location.pathname === '/gems/admin' || location.pathname === '/gems/review' || location.pathname === '/gems/compliance') {
         navigate('/gems/dashboard');
       }
     }
@@ -585,6 +585,20 @@ export default function GemsShell({
 
       <Box component="main" sx={{ ml: { xs: 0, lg: `${DRAWER_WIDTH}px` }, minHeight: '100vh' }}>
         <Box sx={{ p: { xs: 2, md: 3.5 } }}>
+          {location.pathname === '/gems/superadmin' ? (
+            <Box sx={{ display: { xs: 'flex', lg: 'none' }, mb: 1.5 }}>
+              <IconButton
+                onClick={() => setMobileOpen(true)}
+                sx={{
+                  border: `1px solid ${theme.palette.divider}`,
+                  color: theme.palette.text.primary,
+                  background: theme.palette.background.paper,
+                }}
+              >
+                <MenuIcon />
+              </IconButton>
+            </Box>
+          ) : (
           <Paper
             elevation={0}
             sx={{
@@ -689,6 +703,7 @@ export default function GemsShell({
               </Paper>
             </Stack>
           </Paper>
+          )}
 
           {children}
         </Box>

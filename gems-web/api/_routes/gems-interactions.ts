@@ -79,14 +79,14 @@ async function ensureFollowUpActionForInteraction(
  */
 async function resolveInteractionEmployeeEmail(interactionRow: any, fallbackEmail: string): Promise<{ email: string; name: string }> {
   const candidateIds = [interactionRow.target_user_id, interactionRow.logged_by_id]
-    .map((v) => Number(v))
-    .filter((v) => Number.isFinite(v) && v > 0);
+    .map((v) => String(v || '').trim())
+    .filter(Boolean);
 
   if (candidateIds.length > 0) {
     const byId = await rawOne<any>(
-      `SELECT email, display_name FROM users WHERE id = ANY($1::int[]) AND is_active = TRUE LIMIT 1`,
+      `SELECT email, display_name FROM users WHERE id = ANY($1::text[]) AND is_active = TRUE LIMIT 1`,
       [candidateIds],
-    );
+    ).catch(() => null);
     if (byId?.email) {
       return { email: String(byId.email), name: String(byId.display_name || interactionRow.target_user || interactionRow.logged_by || '') };
     }

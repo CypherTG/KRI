@@ -108,7 +108,7 @@ export default function App({ context }: Props) {
               <Route path='/gems/stakeholders/:id' element={<GemsStakeholderDetail context={context} />} />
               <Route path='/gems/agencies' element={<GemsAgencyList context={context} />} />
               <Route path='/gems/agencies/:agencyKey' element={<GemsAgencyDetail context={context} />} />
-              <Route path='/gems/compliance' element={<GemsCompliancePage context={context} />} />
+              <Route path='/gems/compliance' element={<GemsRoleGuard context={context} requiredRole="admin"><GemsCompliancePage context={context} /></GemsRoleGuard>} />
               <Route path='/gems/actions' element={<GemsActionsPage context={context} />} />
               <Route path='/gems/schedule' element={<GemsCalendarView context={context} />} />
               <Route path='/gems/review' element={<GemsRoleGuard context={context} requiredRole="admin"><GemsReviewWorkspace context={context} /></GemsRoleGuard>} />

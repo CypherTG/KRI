@@ -5,6 +5,7 @@ import EventIcon from '@mui/icons-material/Event';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { getComplianceRecords, GemsComplianceRecord, getActionRecords, GemsActionRecord } from '../../services/gemsApi';
+import { isActualGemsAdmin } from '../../utils/gemsRbac';
 import { Link as RouterLink } from 'react-router-dom';
 
 interface Props {
@@ -52,7 +53,9 @@ export default function GemsUpcomingView({ context, limit = 20, initialComplianc
     }
     let cancelled = false;
     Promise.all([
-      getComplianceRecords(context).catch(() => [] as GemsComplianceRecord[]),
+      isActualGemsAdmin(context)
+        ? getComplianceRecords(context).catch(() => [] as GemsComplianceRecord[])
+        : Promise.resolve([] as GemsComplianceRecord[]),
       getActionRecords(context).catch(() => [] as GemsActionRecord[]),
     ]).then(([c, a]) => {
       if (cancelled) return;
