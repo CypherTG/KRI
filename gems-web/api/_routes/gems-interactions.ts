@@ -261,6 +261,47 @@ export default methodGuard(['GET', 'POST', 'PATCH', 'DELETE'], async (req, res) 
       console.error('[gems] Failed to auto-create follow-up action on POST', err);
     });
 
+    // Notify Administrators when a new interaction is submitted for review
+    if (initialStatus === 'Pending Review') {
+      const adminRows = await raw<{ email: string }>(
+        `SELECT email FROM users WHERE is_admin = TRUE AND is_active = TRUE AND COALESCE(email, '') <> ''`,
+      ).catch(() => [] as { email: string }[]);
+      const adminList = Array.from(
+        new Set<string>([
+          ...adminRows.map((a) => String(a.email).trim().toLowerCase()),
+          'mbello@konstructum.com',
+        ]),
+      ).filter((e) => e.includes('@'));
+
+      if (adminList.length > 0) {
+        const html = renderKonstructumEmail({
+          platform: 'GEMS',
+          badgeText: `Pending Review · ${category}`,
+          badgeColor: 'amber',
+          headline: `New Interaction Logged — ${row.client_name}`,
+          lead: `${user.displayName} logged a ${interactionType} with ${row.client_name} (${agency}) and suggested ${category} (${CATEGORY_POINTS[category] || 1} pt${(CATEGORY_POINTS[category] || 1) === 1 ? '' : 's'}).`,
+          rows: [
+            { label: 'Stakeholder', value: String(row.client_name || 'Stakeholder') },
+            { label: 'Company / Agency', value: `${agency}${companyName && companyName !== agency ? ` · ${companyName}` : ''}` },
+            { label: 'Suggested Category', value: `${category} (${CATEGORY_POINTS[category] || 1} pts)` },
+            { label: 'Credited User', value: String(row.target_user || user.displayName) },
+            { label: 'Business Entity', value: String(row.business_arm || 'KCC') },
+            { label: 'Logged By', value: user.displayName },
+          ],
+          notesTitle: 'Meeting Notes & Justification',
+          notesBody: String(row.notes || row.justification || ''),
+          ctaLabel: 'Review & Classify in GEMS',
+          ctaUrl: 'https://konstructum-gems-six.vercel.app/gems/review',
+        });
+        await sendPlatformEmail({
+          to: adminList,
+          subject: `GEMS Pending Review: ${row.client_name} (${category}) — ${agency}`,
+          text: `${user.displayName} logged a ${interactionType} with ${row.client_name} (${agency}) as ${category}. Review in GEMS: https://konstructum-gems-six.vercel.app/gems/review`,
+          html,
+        }).catch(() => {});
+      }
+    }
+
     // If Executive Management Involvement was requested, create an Approval action and notify Admins
     if (row.executive_involvement_requested) {
       await rawOne(
