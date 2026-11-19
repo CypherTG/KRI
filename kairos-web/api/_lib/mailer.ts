@@ -181,8 +181,8 @@ export function renderKonstructumEmail(options: BrandedEmailOptions): string {
     ? 'GEMS PLATFORM · GLOBAL ENGAGEMENT MEASUREMENT SYSTEM'
     : 'KAIROS PLATFORM · RELATIONSHIP MANAGEMENT SYSTEM';
   const logoUrl = isGems
-    ? 'https://konstructum-gems-six.vercel.app/favicon.png'
-    : 'https://konstructum-kairos-one.vercel.app/favicon.png';
+    ? 'https://konstructum-gems-six.vercel.app/konstructum-logo.png'
+    : 'https://konstructum-kairos-one.vercel.app/konstructum-logo.png';
 
   const badgePalette: Record<string, { bg: string; text: string; border: string }> = {
     teal: { bg: '#E6FFFA', text: '#0F766E', border: '#99F6E4' },
@@ -215,7 +215,7 @@ export function renderKonstructumEmail(options: BrandedEmailOptions): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(options.headline)}</title>
 </head>
-<body style="margin:0;padding:0;background-color:#F1F5F9;font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;color:#0F172A;">
+<body style="margin:0;padding:0;background-color:#F1F5F9;font-family:'Biome','Plus Jakarta Sans','Inter','Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;color:#0F172A;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#F1F5F9;padding:28px 12px;">
     <tr>
       <td align="center">
@@ -318,16 +318,11 @@ export function renderKonstructumEmail(options: BrandedEmailOptions): string {
           <!-- Footer -->
           <tr>
             <td style="background:#0F172A;padding:20px 32px;color:#94A3B8;font-size:12px;line-height:1.6;">
-              <div style="font-weight:700;color:#F8FAFC;margin-bottom:4px;">
-                KONSTRUCTUM · Business Development &amp; Government Relations
-              </div>
               <div>40 Adetokunbo Ademola Street, Victoria Island, Lagos, Nigeria</div>
               <div style="margin-top:4px;">
                 <a href="https://www.konstructum.com" style="color:#5EEAD4;text-decoration:none;">www.konstructum.com</a>
                 &nbsp;·&nbsp;
                 <a href="mailto:executivesupport@konstructum.com" style="color:#5EEAD4;text-decoration:none;">executivesupport@konstructum.com</a>
-                &nbsp;·&nbsp;
-                <span>+234 912 555 5551</span>
               </div>
             </td>
           </tr>

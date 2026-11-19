@@ -354,7 +354,7 @@ export default function GemsReviewWorkspace({ context }: Props) {
 
       <Snackbar
         open={!!snackbar}
-        autoHideDuration={4000}
+        autoHideDuration={5000}
         onClose={() => setSnackbar(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

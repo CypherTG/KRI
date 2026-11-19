@@ -15,6 +15,7 @@ import {
   MenuItem,
   Paper,
   Select,
+  Snackbar,
   Stack,
   TextField,
   Typography,
@@ -349,12 +350,18 @@ export default function GemsInteractionWorkspace({
   const [users, setUsers] = useState<IKRIUser[]>([]);
   const [interactions, setInteractions] = useState<GemsInteractionRecord[]>([]);
   const [automations, setAutomations] = useState<IAutomation[]>([]);
+  const currentUserName =
+    context.pageContext.user.displayName
+    || context.pageContext.user.email
+    || context.pageContext.user.loginName
+    || 'Current User';
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [form, setForm] = useState({
     clientId: fixedClient?.ID || '',
-    targetUserId: '',
+    targetUserId: currentUserName,
     businessArm: 'KCC' as BusinessArm,
     agency: '',
     interactionType: 'Physical Meeting',
@@ -442,7 +449,7 @@ export default function GemsInteractionWorkspace({
       setForm((current) => ({
         ...current,
         clientId: fixedClient?.ID || current.clientId || resolvedClients[0]?.ID || '',
-        targetUserId: current.targetUserId || '',
+        targetUserId: current.targetUserId || currentUserName,
       }));
     } catch (err: any) {
       setError(err?.message || 'Failed to load the GEMS workspace.');
@@ -525,12 +532,6 @@ export default function GemsInteractionWorkspace({
     };
   });
 
-  const currentUserName =
-    context.pageContext.user.displayName
-    || context.pageContext.user.email
-    || context.pageContext.user.loginName
-    || 'Current User';
-
   const handleSave = async () => {
     const resolvedClient = selectedClient || scopedClients.find((client) => String(client.ID) === String(form.clientId)) || clients.find((client) => String(client.ID) === String(form.clientId)) || fixedClient || null;
     if (!resolvedClient) {
@@ -597,6 +598,7 @@ export default function GemsInteractionWorkspace({
       });
 
       setInteractions((current) => [saved, ...current]);
+      setSuccessMessage(`Interaction logged for ${clientLabel(resolvedClient)} (${form.category}).`);
       setForm((current) => ({
         ...current,
         clientId: fixedClient?.ID || current.clientId,
@@ -791,7 +793,7 @@ export default function GemsInteractionWorkspace({
             <TextField
               fullWidth
               size="small"
-              label="Credit user"
+              label="Logged by"
               placeholder={currentUserName}
               value={form.targetUserId}
               onChange={(event) => setForm((current) => ({ ...current, targetUserId: event.target.value }))}
@@ -1059,6 +1061,21 @@ export default function GemsInteractionWorkspace({
         items={operationalItems}
         emptyLabel="No open follow-ups are currently logged for this workspace."
       />
+
+      <Snackbar
+        open={Boolean(successMessage)}
+        autoHideDuration={5000}
+        onClose={() => setSuccessMessage('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSuccessMessage('')}
+          severity="success"
+          sx={{ borderRadius: 2, fontWeight: 600 }}
+        >
+          {successMessage}
+        </Alert>
+      </Snackbar>
     </Stack>
   );
 }
