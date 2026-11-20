@@ -16,7 +16,7 @@ import SettingsPage from './settings/SettingsPage';
 import SuperadminPage from './superadmin/SuperadminPage';
 import KairosAdminPage from './admin/KairosAdminPage';
 import KairosRoleGuard from './shared/KairosRoleGuard';
-import { getCurrentUserProfile, seedKRIUsersFromSharePointIdentity, importClientsFromExcel, ImportResult } from '../services/graphApi';
+import { getCurrentUserProfile, getKairosViewMode, seedKRIUsersFromSharePointIdentity, importClientsFromExcel, ImportResult } from '../services/graphApi';
 import { seedLookupListsFromCurrentRegistry } from '../services/sharepointProvisioning';
 import { useStore } from '../store/useStore';
 import { useAuth } from '../../../services/session';
@@ -208,6 +208,16 @@ export default function App({ context }: Props) {
     }
   };
 
+  const signedInEmail = (context?.session?.email || context?.pageContext?.user?.email || '').toLowerCase().trim();
+  const isSuperAdmin = signedInEmail === 'mbello@konstructum.com' || Boolean(context?.session?.isSuperAdmin);
+  const isAccountAdmin = isSuperAdmin || Boolean(isAdmin) || Boolean(context?.session?.isAdmin);
+  const effectiveIsAdmin = isAccountAdmin && getKairosViewMode() === 'admin';
+  const defaultLandingRoute = isSuperAdmin
+    ? '/superadmin'
+    : effectiveIsAdmin
+      ? '/admin'
+      : homeRoute;
+
   return (
     <ThemeProvider theme={kriTheme}>
       <CssBaseline />
@@ -220,7 +230,7 @@ export default function App({ context }: Props) {
       <BrowserRouter>
         <AppShell context={context} onLogout={logout} isAdmin={isAdmin}>
           <Routes>
-            <Route path="/" element={<Navigate to={homeRoute} replace />} />
+            <Route path="/" element={<Navigate to={defaultLandingRoute} replace />} />
             <Route path="/add-contact" element={<ClientList context={context} pageVariant="add-contact" />} />
             <Route path="/clients" element={<ClientList context={context} pageVariant="list" />} />
             <Route path="/clients/:id" element={<ClientDetail context={context} />} />
@@ -279,7 +289,7 @@ export default function App({ context }: Props) {
                 </KairosRoleGuard>
               )}
             />
-            <Route path="*" element={<Navigate to={homeRoute} replace />} />
+            <Route path="*" element={<Navigate to={defaultLandingRoute} replace />} />
           </Routes>
         </AppShell>
       </BrowserRouter>

@@ -56,7 +56,7 @@ function GemsRedirect({ base }: { base: string }) {
 
 export default function App({ context }: Props) {
   const { setCurrentUserProfile } = useStore();
-  const { effectiveIsAdmin } = useGemsViewMode(context);
+  const { effectiveIsAdmin, isAccountSuperAdmin } = useGemsViewMode(context);
   const userScope = (context.pageContext.user.email || context.pageContext.user.loginName || context.pageContext.user.displayName || 'default')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_');
@@ -89,6 +89,13 @@ export default function App({ context }: Props) {
 
   const gemsTheme = useMemo(() => createKriTheme(themeMode), [themeMode]);
 
+  const defaultLandingRoute =
+    isAccountSuperAdmin && effectiveIsAdmin
+      ? '/gems/superadmin'
+      : effectiveIsAdmin
+        ? '/gems/admin'
+        : homeRoute;
+
   return (
     <ThemeProvider theme={gemsTheme}>
       <CssBaseline />
@@ -98,7 +105,7 @@ export default function App({ context }: Props) {
         <BrowserRouter>
           <GemsShell context={context}>
             <Routes>
-              <Route path='/' element={<Navigate to={effectiveIsAdmin ? '/gems/admin' : homeRoute} replace />} />
+              <Route path='/' element={<Navigate to={defaultLandingRoute} replace />} />
 
               {/* GEMS routes */}
               <Route path='/gems/superadmin' element={<GemsRoleGuard context={context} requiredRole="superadmin"><GemsSuperadminPage context={context} /></GemsRoleGuard>} />

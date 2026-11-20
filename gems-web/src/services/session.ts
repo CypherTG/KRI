@@ -145,6 +145,18 @@ export const useAuth = create<KriAuthState>((set, get) => ({
         body: { email, password, ...(token ? { token } : {}) },
       });
       if (result.token) setStoredAuthToken(result.token);
+      if (typeof window !== 'undefined') {
+        try {
+          if (result.isAdmin || result.isSuperAdmin) {
+            window.localStorage.setItem('gems.workspaceViewMode', 'admin');
+          }
+          if (window.location.pathname !== '/') {
+            window.history.replaceState({}, '', '/');
+          }
+        } catch {
+          // ignore storage/history errors
+        }
+      }
       adopt(set, result.user, Boolean(result.isAdmin), Boolean(result.isSuperAdmin));
     } catch (error) {
       const needsToken = Boolean((error as { needsToken?: boolean })?.needsToken);
@@ -173,6 +185,18 @@ export const useAuth = create<KriAuthState>((set, get) => ({
         },
       });
       if (result.token) setStoredAuthToken(result.token);
+      if (typeof window !== 'undefined') {
+        try {
+          if (result.isAdmin || result.isSuperAdmin) {
+            window.localStorage.setItem('gems.workspaceViewMode', 'admin');
+          }
+          if (window.location.pathname !== '/') {
+            window.history.replaceState({}, '', '/');
+          }
+        } catch {
+          // ignore storage/history errors
+        }
+      }
       adopt(set, result.user, Boolean(result.isAdmin), Boolean(result.isSuperAdmin));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Group Intranet SSO sign-in failed.';
@@ -216,6 +240,9 @@ export const useAuth = create<KriAuthState>((set, get) => ({
       await apiRequest('/auth/session', { method: 'POST' });
     } catch {
       /* clearing locally is enough */
+    }
+    if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+      try { window.history.replaceState({}, '', '/'); } catch {}
     }
     set({ status: 'anonymous', user: null, isAdmin: false, isSuperAdmin: false, context: null, error: null });
   },
