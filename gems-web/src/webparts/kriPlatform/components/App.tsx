@@ -30,7 +30,7 @@ interface Props {
 
 const THEME_MODE_KEY = 'gems.themeMode';
 const HOME_ROUTE_KEY = 'gems.homeRoute';
-const DEFAULT_HOME_ROUTE = '/gems/dashboard';
+const DEFAULT_HOME_ROUTE = '/gems/profile';
 
 /**
  * Preferences are stored per person, keyed by email, so two people sharing a
@@ -94,7 +94,7 @@ export default function App({ context }: Props) {
       ? '/gems/superadmin'
       : effectiveIsAdmin
         ? '/gems/admin'
-        : homeRoute;
+        : '/gems/profile';
 
   return (
     <ThemeProvider theme={gemsTheme}>

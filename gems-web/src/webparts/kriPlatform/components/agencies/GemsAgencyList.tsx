@@ -6,8 +6,15 @@ import SearchIcon from '@mui/icons-material/Search';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { downloadCsv, escapeCsv } from '../../utils/exportCsv';
 import { KriContext } from '../../../../types/kri';
-import { getClients, IClient } from '../../services/graphApi';
-import { filterGemsEligibleClients } from '../../utils/gemsScope';
+import { getClients, getComms, IClient } from '../../services/graphApi';
+import { getGemsInteractions } from '../../services/gemsApi';
+import {
+  filterGemsEligibleClients,
+  getUserUpdatedClientIds,
+  isContactUpdatedByCurrentUser,
+} from '../../utils/gemsScope';
+import { useGemsViewMode } from '../../utils/gemsRbac';
+import { useStore } from '../../store/useStore';
 import { buildCompanySummaries, normalizeLookupText } from '../../utils/lookupHelpers';
 import { TableSkeleton } from '../shared/LoadingState';
 import EmptyState from '../shared/EmptyState';
@@ -19,24 +26,40 @@ interface Props {
 
 export default function GemsAgencyList({ context }: Props) {
   const navigate = useNavigate();
+  const { effectiveIsAdmin } = useGemsViewMode(context);
+  const currentUserProfile = useStore((state) => state.currentUserProfile);
   const [clients, setClients] = useState<IClient[]>([]);
+  const [interactions, setInteractions] = useState<any[]>([]);
+  const [comms, setComms] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    getClients(context)
-      .then((data) => {
-        if (!cancelled) setClients(data);
+    Promise.all([
+      getClients(context),
+      effectiveIsAdmin ? Promise.resolve([]) : getGemsInteractions(context).catch(() => []),
+      effectiveIsAdmin ? Promise.resolve([]) : getComms(context).catch(() => []),
+    ])
+      .then(([data, interactionRows, commRows]) => {
+        if (cancelled) return;
+        setClients(data);
+        setInteractions(interactionRows);
+        setComms(commRows);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [context]);
+  }, [context, effectiveIsAdmin]);
 
-  const gemsClients = useMemo(() => filterGemsEligibleClients(clients), [clients]);
+  const gemsClients = useMemo(() => {
+    const eligible = filterGemsEligibleClients(clients);
+    if (effectiveIsAdmin) return eligible;
+    const updatedIds = getUserUpdatedClientIds(interactions, comms, context, currentUserProfile);
+    return eligible.filter((c) => isContactUpdatedByCurrentUser(c, updatedIds, context, currentUserProfile));
+  }, [clients, interactions, comms, effectiveIsAdmin, context, currentUserProfile]);
   const agencies = useMemo(() => buildCompanySummaries(gemsClients), [gemsClients]);
 
   const filtered = useMemo(() => {

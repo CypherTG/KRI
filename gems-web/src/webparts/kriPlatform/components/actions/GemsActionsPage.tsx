@@ -12,7 +12,9 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { downloadCsv, escapeCsv } from '../../utils/exportCsv';
-import { GEMS_ALLOWED_AGENCIES } from '../../utils/gemsScope';
+import { GEMS_ALLOWED_AGENCIES, isActionForCurrentUser } from '../../utils/gemsScope';
+import { useGemsViewMode } from '../../utils/gemsRbac';
+import { useStore } from '../../store/useStore';
 import { getKRIUsers, IKRIUser } from '../../services/graphApi';
 import { userDisplayName } from '../../utils/lookupHelpers';
 import { GemsActionRecord, getActionRecords, createActionRecord, completeActionRecord, deleteActionRecord } from '../../services/gemsApi';
@@ -35,6 +37,8 @@ type SortField = 'Title' | 'Priority' | 'Status' | 'DueDate' | 'AssignedTo' | 'E
 type SortDir = 'asc' | 'desc';
 
 export default function GemsActionsPage({ context }: Props) {
+  const { effectiveIsAdmin } = useGemsViewMode(context);
+  const currentUserProfile = useStore((state) => state.currentUserProfile);
   const [records, setRecords] = useState<GemsActionRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -55,14 +59,22 @@ export default function GemsActionsPage({ context }: Props) {
 
   useEffect(() => { fetchRecords(); }, []);
 
+  const scopedRecords = useMemo(
+    () =>
+      effectiveIsAdmin
+        ? records
+        : records.filter((r) => isActionForCurrentUser(r, context, currentUserProfile)),
+    [effectiveIsAdmin, records, context, currentUserProfile],
+  );
+
   const assignedToOptions = useMemo(() => {
     const names = new Set<string>();
-    records.forEach((r) => { if (r.AssignedTo) names.add(r.AssignedTo); });
+    scopedRecords.forEach((r) => { if (r.AssignedTo) names.add(r.AssignedTo); });
     return Array.from(names).sort();
-  }, [records]);
+  }, [scopedRecords]);
 
   const filtered = useMemo(() => {
-    let items = [...records];
+    let items = [...scopedRecords];
     if (filterStatus === 'open') items = items.filter((r) => r.Status !== 'Completed' && r.Status !== 'Cancelled');
     else if (filterStatus === 'completed') items = items.filter((r) => r.Status === 'Completed');
     else if (filterStatus === 'overdue') items = items.filter((r) => {
@@ -84,7 +96,7 @@ export default function GemsActionsPage({ context }: Props) {
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return items;
-  }, [records, filterStatus, filterPriority, filterAssignedTo, search, sortField, sortDir]);
+  }, [scopedRecords, filterStatus, filterPriority, filterAssignedTo, search, sortField, sortDir]);
 
   const handleSort = (field: SortField) => { if (sortField === field) setSortDir((d) => d === 'asc' ? 'desc' : 'asc'); else { setSortField(field); setSortDir('asc'); } };
 
@@ -93,7 +105,7 @@ export default function GemsActionsPage({ context }: Props) {
     downloadCsv(`gems-actions-${new Date().toISOString().slice(0, 10)}.csv`, [fields.map((f) => String(f)).join(','), ...filtered.map((r) => fields.map((f) => escapeCsv(r[f])).join(','))]);
   };
 
-  const overdueCount = useMemo(() => records.filter((r) => r.Status !== 'Completed' && r.Status !== 'Cancelled' && !!r.DueDate && new Date(r.DueDate) < new Date()).length, [records]);
+  const overdueCount = useMemo(() => scopedRecords.filter((r) => r.Status !== 'Completed' && r.Status !== 'Cancelled' && !!r.DueDate && new Date(r.DueDate) < new Date()).length, [scopedRecords]);
 
   return (
     <Box>
@@ -101,7 +113,7 @@ export default function GemsActionsPage({ context }: Props) {
         <Typography sx={{ fontWeight: 900, fontSize: '1.15rem', color: '#1A1D23' }}>
           Action Items
           <Typography component="span" sx={{ fontSize: '0.85rem', color: '#7B8FA6', ml: 1, fontWeight: 600 }}>
-            ({filtered.length} of {records.length}{overdueCount > 0 ? `, ${overdueCount} overdue` : ''})
+            ({filtered.length} of {scopedRecords.length}{overdueCount > 0 ? `, ${overdueCount} overdue` : ''})
           </Typography>
         </Typography>
         <Stack direction="row" spacing={1}>

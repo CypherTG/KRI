@@ -24,6 +24,7 @@ import { KriContext } from '../../../../types/kri';
 import {
   getAutomations,
   getClients,
+  getComms,
   getKRIUsers,
   IAutomation,
   IClient,
@@ -38,7 +39,18 @@ import {
   logGemsInteraction,
 } from '../../services/gemsApi';
 import { normalizeLookupKey, normalizeLookupText, userDisplayName } from '../../utils/lookupHelpers';
-import { agencyMatchesTarget, filterGemsEligibleClients, GEMS_AGENCY_OPTIONS, isGemsEligibleInteraction, normalizeGemsAgency } from '../../utils/gemsScope';
+import {
+  agencyMatchesTarget,
+  filterGemsEligibleClients,
+  GEMS_AGENCY_OPTIONS,
+  getUserUpdatedClientIds,
+  isContactUpdatedByCurrentUser,
+  isGemsEligibleInteraction,
+  isInteractionUploadedByCurrentUser,
+  normalizeGemsAgency,
+} from '../../utils/gemsScope';
+import { useGemsViewMode } from '../../utils/gemsRbac';
+import { useStore } from '../../store/useStore';
 import { useNavigate } from 'react-router-dom';
 import OperationalQueue from '../shared/OperationalQueue';
 import { buildAutomationOperationalItems, OperationalItem } from '../../utils/operations';
@@ -346,9 +358,12 @@ export default function GemsInteractionWorkspace({
   showEntityDashboards = true,
 }: Props) {
   const navigate = useNavigate();
+  const { effectiveIsAdmin } = useGemsViewMode(context);
+  const currentUserProfile = useStore((state) => state.currentUserProfile);
   const [clients, setClients] = useState<IClient[]>([]);
   const [users, setUsers] = useState<IKRIUser[]>([]);
   const [interactions, setInteractions] = useState<GemsInteractionRecord[]>([]);
+  const [comms, setComms] = useState<any[]>([]);
   const [automations, setAutomations] = useState<IAutomation[]>([]);
   const currentUserName =
     context.pageContext.user.displayName
@@ -414,7 +429,7 @@ export default function GemsInteractionWorkspace({
       // to harvesting the SharePoint site-user directory when this came back
       // empty; here that fallback is removed, because the accounts already exist
       // and re-harvesting them would only reintroduce a second source of truth.
-      const [resolvedClients, resolvedUsers, resolvedInteractions, resolvedAutomations] = await Promise.all([
+      const [resolvedClients, resolvedUsers, resolvedInteractions, resolvedAutomations, resolvedComms] = await Promise.all([
         availableClients !== undefined
           ? Promise.resolve(filterGemsEligibleClients(availableClients))
           : getClients(context).then(filterGemsEligibleClients).catch(() => [] as IClient[]),
@@ -431,6 +446,9 @@ export default function GemsInteractionWorkspace({
         initialAutomations !== undefined
           ? Promise.resolve(initialAutomations)
           : getAutomations(context).catch(() => [] as IAutomation[]),
+        effectiveIsAdmin
+          ? Promise.resolve([] as any[])
+          : getComms(context).catch(() => [] as any[]),
       ]);
 
       const legacyInteractions = true ? resolvedInteractions : fixedClient
@@ -446,6 +464,7 @@ export default function GemsInteractionWorkspace({
       setUsers(resolvedUsers);
       setInteractions(resolvedInteractions.filter(isGemsEligibleInteraction));
       setAutomations(resolvedAutomations);
+      setComms(resolvedComms);
       setForm((current) => ({
         ...current,
         clientId: fixedClient?.ID || current.clientId || resolvedClients[0]?.ID || '',
@@ -478,8 +497,29 @@ export default function GemsInteractionWorkspace({
       .reduce((sum, item) => sum + Number(item.Points || 0), 0)
     : 0;
   const executiveThresholdMet = selectedCompanyMonthPoints >= 20;
+  const visibleInteractions = useMemo(
+    () =>
+      effectiveIsAdmin
+        ? interactions
+        : interactions.filter((item) => isInteractionUploadedByCurrentUser(item, context, currentUserProfile)),
+    [effectiveIsAdmin, interactions, context, currentUserProfile],
+  );
+
+  const userUpdatedClientIds = useMemo(
+    () => (effectiveIsAdmin ? new Set<string>() : getUserUpdatedClientIds(interactions, comms, context, currentUserProfile)),
+    [effectiveIsAdmin, interactions, comms, context, currentUserProfile],
+  );
+
+  const userOwnedClients = useMemo(
+    () =>
+      effectiveIsAdmin
+        ? scopedClients
+        : scopedClients.filter((c) => isContactUpdatedByCurrentUser(c, userUpdatedClientIds, context, currentUserProfile)),
+    [effectiveIsAdmin, scopedClients, userUpdatedClientIds, context, currentUserProfile],
+  );
+
   const operationalItems = useMemo(() => {
-    const interactionItems = interactions
+    const interactionItems = visibleInteractions
       .filter((item) => Boolean(item.FollowUpRequired || item.FollowUpDate))
       .map((item) => {
         const due = item.FollowUpDate ? new Date(item.FollowUpDate) : null;
@@ -504,8 +544,9 @@ export default function GemsInteractionWorkspace({
         };
       });
 
-    const autoItems = buildAutomationOperationalItems(automations, scopedClients)
-      .filter((item) => !item.clientId || scopedClients.some((sc) => String(sc.ID) === item.clientId))
+    const autoClients = effectiveIsAdmin ? scopedClients : userOwnedClients;
+    const autoItems = buildAutomationOperationalItems(automations, autoClients)
+      .filter((item) => !item.clientId || autoClients.some((sc) => String(sc.ID) === item.clientId))
       .filter((item) => item.priority === 'high' || item.priority === 'medium');
 
     return [...interactionItems, ...autoItems]
@@ -514,7 +555,7 @@ export default function GemsInteractionWorkspace({
         return (order[left.priority] ?? 2) - (order[right.priority] ?? 2);
       })
       .slice(0, 6);
-  }, [interactions, clients, automations]);
+  }, [visibleInteractions, clients, automations, scopedClients, userOwnedClients, effectiveIsAdmin]);
 
   const entityDashboards = BUSINESS_ARMS.map((arm) => {
     const rows = dashboardRows(interactions, arm);
@@ -551,19 +592,11 @@ export default function GemsInteractionWorkspace({
       return;
     }
 
-    const typedCreditUser = form.targetUserId.trim();
-    const matchedUser = typedCreditUser
-      ? users.find(
-          (entry) =>
-            String(entry.ID) === typedCreditUser
-            || userDisplayName(entry).toLowerCase() === typedCreditUser.toLowerCase()
-            || String(entry.Email || entry.UserAccount?.Email || '').toLowerCase() === typedCreditUser.toLowerCase(),
-        )
-      : users.find((entry) => currentUserMatches(context, entry));
+    const matchedUser = users.find((entry) => currentUserMatches(context, entry));
 
     const resolvedTargetUserName = matchedUser
       ? userDisplayName(matchedUser)
-      : typedCreditUser || currentUserName;
+      : currentUserName;
     const resolvedTargetUserId = matchedUser
       ? String(matchedUser.ID)
       : String(context.pageContext.user.id || '');
@@ -794,10 +827,11 @@ export default function GemsInteractionWorkspace({
               fullWidth
               size="small"
               label="Logged by"
-              placeholder={currentUserName}
-              value={form.targetUserId}
-              onChange={(event) => setForm((current) => ({ ...current, targetUserId: event.target.value }))}
+              value={currentUserName}
+              disabled
+              InputProps={{ readOnly: true }}
               InputLabelProps={{ shrink: true }}
+              helperText="Automatically recorded from your signed-in account."
             />
 
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
@@ -1024,16 +1058,20 @@ export default function GemsInteractionWorkspace({
       </Box>
 
       <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid #E8ECF0' }}>
-        <Typography sx={{ fontWeight: 800, fontSize: '1rem', mb: 2 }}>Recent GEMS interactions</Typography>
+        <Typography sx={{ fontWeight: 800, fontSize: '1rem', mb: 2 }}>
+          Recent GEMS interactions{!effectiveIsAdmin ? ' (Uploaded by you)' : ''}
+        </Typography>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
             <CircularProgress />
           </Box>
-        ) : interactions.length === 0 ? (
-          <Typography sx={{ color: '#7B8FA6' }}>Nothing logged yet.</Typography>
+        ) : visibleInteractions.length === 0 ? (
+          <Typography sx={{ color: '#7B8FA6' }}>
+            {effectiveIsAdmin ? 'Nothing logged yet.' : 'You have not uploaded any GEMS interactions yet.'}
+          </Typography>
         ) : (
           <Stack spacing={1.5}>
-            {interactions.slice(0, 12).map((interaction) => (
+            {visibleInteractions.slice(0, 12).map((interaction) => (
               <Box key={interaction.ID} sx={{ p: 1.75, borderRadius: 2, background: '#FAFBFC', border: '1px solid #EEF2F7' }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                   <Box sx={{ minWidth: 0 }}>

@@ -93,6 +93,7 @@ export interface GemsInteractionRecord {
   WeekStart: string;
   ReportingMonth: string;
   LoggedBy: string;
+  LoggedById?: string;
   LoggedAt: string;
   TargetUser: string;
   TargetUserId: string;
@@ -140,11 +141,13 @@ export interface GemsActionRecord {
   DueDate: string;
   CompletedDate: string;
   AssignedTo: string;
+  AssignedToId?: string;
   Description: string;
   Source: string;
   SourceId: string;
   Outcome: string;
   CreatedBy: string;
+  CreatedById?: string;
   CreatedAt: string;
 }
 

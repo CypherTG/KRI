@@ -12,7 +12,9 @@ import TodayIcon from '@mui/icons-material/Today';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import { getGemsInteractions, GemsInteractionRecord } from '../../services/gemsApi';
 import { getComplianceRecords, GemsComplianceRecord, getActionRecords, GemsActionRecord } from '../../services/gemsApi';
-import { isActualGemsAdmin } from '../../utils/gemsRbac';
+import { useGemsViewMode } from '../../utils/gemsRbac';
+import { useStore } from '../../store/useStore';
+import { isActionForCurrentUser, isInteractionUploadedByCurrentUser } from '../../utils/gemsScope';
 import { Link as RouterLink } from 'react-router-dom';
 import { Link } from '@mui/material';
 
@@ -67,6 +69,8 @@ interface Props {
 }
 
 export default function GemsCalendarView({ context }: Props) {
+  const { effectiveIsAdmin } = useGemsViewMode(context);
+  const currentUserProfile = useStore((state) => state.currentUserProfile);
   const [interactions, setInteractions] = useState<GemsInteractionRecord[]>([]);
   const [compliance, setCompliance] = useState<GemsComplianceRecord[]>([]);
   const [actions, setActions] = useState<GemsActionRecord[]>([]);
@@ -79,19 +83,27 @@ export default function GemsCalendarView({ context }: Props) {
     let cancelled = false;
     Promise.all([
       getGemsInteractions(context).catch(() => [] as GemsInteractionRecord[]),
-      isActualGemsAdmin(context)
+      effectiveIsAdmin
         ? getComplianceRecords(context).catch(() => [] as GemsComplianceRecord[])
         : Promise.resolve([] as GemsComplianceRecord[]),
       getActionRecords(context).catch(() => [] as GemsActionRecord[]),
     ]).then(([i, c, a]) => {
       if (cancelled) return;
-      setInteractions(i);
+      setInteractions(
+        effectiveIsAdmin
+          ? i
+          : i.filter((item) => isInteractionUploadedByCurrentUser(item, context, currentUserProfile)),
+      );
       setCompliance(c);
-      setActions(a);
+      setActions(
+        effectiveIsAdmin
+          ? a
+          : a.filter((act) => isActionForCurrentUser(act, context, currentUserProfile)),
+      );
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [context]);
+  }, [context, effectiveIsAdmin, currentUserProfile]);
 
   const entries = useMemo(() => {
     const result: CalendarEntry[] = [];

@@ -81,6 +81,12 @@ const ADMIN_NAV: NavItem[] = [
 
 const USER_PRIMARY_NAV: NavItem[] = [
   {
+    label: 'My Profile',
+    path: '/gems/profile',
+    icon: <AccountCircleIcon />,
+    helper: 'Your GEMS profile, points, and activity.',
+  },
+  {
     label: 'Dashboard',
     path: '/gems/dashboard',
     icon: <DashboardIcon />,
@@ -109,12 +115,6 @@ const USER_PRIMARY_NAV: NavItem[] = [
     path: '/gems/schedule',
     icon: <EventNoteIcon />,
     helper: 'Monthly view of meetings, follow-ups, and deadlines.',
-  },
-  {
-    label: 'My Profile',
-    path: '/gems/profile',
-    icon: <AccountCircleIcon />,
-    helper: 'Your GEMS profile, points, and activity.',
   },
 ];
 
@@ -291,7 +291,7 @@ export default function GemsShell({
       }
     } else {
       if (location.pathname === '/gems/admin' || location.pathname === '/gems/review' || location.pathname === '/gems/compliance') {
-        navigate('/gems/dashboard');
+        navigate('/gems/profile');
       }
     }
     setMobileOpen(false);

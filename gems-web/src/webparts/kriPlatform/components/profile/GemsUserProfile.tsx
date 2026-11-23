@@ -17,8 +17,14 @@ import {
 import { KriContext } from '../../../../types/kri';
 import { getAutomations, getClients, getCurrentUserPhotoUrl, getCurrentUserProfile, IAutomation, IClient, IKRIUser, removeOwnProfilePhoto, uploadOwnProfilePhoto } from '../../services/graphApi';
 import { GemsInteractionRecord, getGemsInteractions } from '../../services/gemsApi';
-import { normalizeLookupText, userDisplayName } from '../../utils/lookupHelpers';
-import { filterGemsEligibleClients, isGemsEligibleInteraction } from '../../utils/gemsScope';
+import { normalizeLookupText } from '../../utils/lookupHelpers';
+import {
+  filterGemsEligibleClients,
+  getUserUpdatedClientIds,
+  isContactUpdatedByCurrentUser,
+  isGemsEligibleInteraction,
+  isInteractionUploadedByCurrentUser,
+} from '../../utils/gemsScope';
 import OperationalQueue from '../shared/OperationalQueue';
 import { buildAutomationOperationalItems, OperationalItem } from '../../utils/operations';
 
@@ -50,33 +56,7 @@ function interactionBelongsToCurrentUser(
   profile: IKRIUser | null,
   context: KriContext,
 ): boolean {
-  const userId = String(profile?.ID || '').trim();
-  if (userId && String(interaction.TargetUserId || '').trim() === userId) {
-    return true;
-  }
-
-  const tokens = [
-    userDisplayName(profile),
-    profile?.UserAccount?.Email,
-    profile?.UserAccount?.LoginName,
-    context.pageContext.user.displayName,
-    context.pageContext.user.email,
-    context.pageContext.user.loginName,
-    context.pageContext.user.email?.split('@')[0],
-  ]
-    .filter(Boolean)
-    .map(normalizeIdentity)
-    .filter(Boolean);
-
-  const haystack = [
-    interaction.TargetUser,
-    interaction.TargetUserId,
-  ]
-    .filter(Boolean)
-    .map(normalizeIdentity)
-    .join(' ');
-
-  return tokens.some((token) => haystack.includes(token));
+  return isInteractionUploadedByCurrentUser(interaction, context, profile);
 }
 
 function formatInteractionDate(value: string): string {
@@ -247,7 +227,9 @@ export default function GemsUserProfile({ context }: { context: KriContext }) {
         };
       });
 
-    const autoItems = buildAutomationOperationalItems(automations, clients)
+    const updatedIds = getUserUpdatedClientIds(interactions, [], context, profile);
+    const ownedClients = clients.filter((c) => isContactUpdatedByCurrentUser(c, updatedIds, context, profile));
+    const autoItems = buildAutomationOperationalItems(automations, ownedClients)
       .filter((item) => item.priority === 'high' || item.priority === 'medium');
 
     return [...interactionItems, ...autoItems]

@@ -4,10 +4,16 @@ import {
 } from '@mui/material';
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
 import { KriContext } from '../../../../types/kri';
-import { getClients, IClient } from '../../services/graphApi';
-import { filterGemsEligibleClients } from '../../utils/gemsScope';
+import { getClients, getComms, IClient } from '../../services/graphApi';
+import {
+  filterGemsEligibleClients,
+  getUserUpdatedClientIds,
+  isContactUpdatedByCurrentUser,
+} from '../../utils/gemsScope';
 import { buildCompanySummaries, normalizeLookupKey } from '../../utils/lookupHelpers';
-import { CompanyAcumenRecord, getCompanyAcumenRecords, saveCompanyAcumenFile } from '../../services/gemsApi';
+import { CompanyAcumenRecord, getCompanyAcumenRecords, getGemsInteractions, saveCompanyAcumenFile } from '../../services/gemsApi';
+import { useGemsViewMode } from '../../utils/gemsRbac';
+import { useStore } from '../../store/useStore';
 import KriStageBadge from '../shared/KriStageBadge';
 import GemsInteractionWorkspace from '../gems/GemsInteractionWorkspace';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
@@ -22,8 +28,12 @@ interface Props {
 export default function GemsAgencyDetail({ context }: Props) {
   const { agencyKey } = useParams();
   const navigate = useNavigate();
+  const { effectiveIsAdmin } = useGemsViewMode(context);
+  const currentUserProfile = useStore((state) => state.currentUserProfile);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [clients, setClients] = useState<IClient[]>([]);
+  const [interactions, setInteractions] = useState<any[]>([]);
+  const [comms, setComms] = useState<any[]>([]);
   const [acumen, setAcumen] = useState<CompanyAcumenRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -50,15 +60,24 @@ export default function GemsAgencyDetail({ context }: Props) {
     Promise.all([
       getClients(context),
       getCompanyAcumenRecords(context, normalizedKey).catch((): CompanyAcumenRecord[] => []),
+      effectiveIsAdmin ? Promise.resolve([]) : getGemsInteractions(context).catch(() => []),
+      effectiveIsAdmin ? Promise.resolve([]) : getComms(context).catch(() => []),
     ])
-      .then(([c, a]) => {
+      .then(([c, a, interactionRows, commRows]) => {
         setClients(c);
         setAcumen(a);
+        setInteractions(interactionRows);
+        setComms(commRows);
       })
       .finally(() => setLoading(false));
-  }, [agencyKey, context]);
+  }, [agencyKey, context, effectiveIsAdmin]);
 
-  const gemsClients = useMemo(() => filterGemsEligibleClients(clients), [clients]);
+  const gemsClients = useMemo(() => {
+    const eligible = filterGemsEligibleClients(clients);
+    if (effectiveIsAdmin) return eligible;
+    const updatedIds = getUserUpdatedClientIds(interactions, comms, context, currentUserProfile);
+    return eligible.filter((c) => isContactUpdatedByCurrentUser(c, updatedIds, context, currentUserProfile));
+  }, [clients, interactions, comms, effectiveIsAdmin, context, currentUserProfile]);
   const agencies = useMemo(() => buildCompanySummaries(gemsClients), [gemsClients]);
   const routeKey = normalizeLookupKey(decodeURIComponent(agencyKey || ''));
   const agency = useMemo(() => agencies.find((a) => a.key === routeKey) || null, [agencies, routeKey]);

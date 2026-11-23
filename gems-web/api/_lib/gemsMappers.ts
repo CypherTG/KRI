@@ -72,6 +72,7 @@ export function mapGemsInteraction(row: any) {
     WeekStart: text(row.week_start) || weekStartOf(loggedAt),
     ReportingMonth: text(row.reporting_month) || monthOf(loggedAt),
     LoggedBy: text(row.logged_by),
+    LoggedById: text(row.logged_by_id),
     LoggedAt: loggedAt.toISOString(),
     TargetUser: text(row.target_user),
     TargetUserId: text(row.target_user_id),
@@ -124,11 +125,13 @@ export function mapGemsAction(row: any) {
     DueDate: text(row.due_date),
     CompletedDate: text(row.completed_date),
     AssignedTo: text(row.assigned_to),
+    AssignedToId: text(row.assigned_to_id),
     Description: text(row.description),
     Source: text(row.source),
     SourceId: text(row.source_id),
     Outcome: text(row.outcome),
     CreatedBy: text(row.created_by),
+    CreatedById: text(row.created_by_id),
     CreatedAt: row.created_at ? new Date(row.created_at).toISOString() : '',
   };
 }
