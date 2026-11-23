@@ -25,15 +25,9 @@ import TableRowsIcon from '@mui/icons-material/TableRows';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { downloadCsv, escapeCsv } from '../../utils/exportCsv';
 import { KriContext } from '../../../../types/kri';
-import { getClients, getComms } from '../../services/graphApi';
-import { getGemsInteractions, loadGemsStakeholders } from '../../services/gemsApi';
-import {
-  filterGemsEligibleClients,
-  getUserUpdatedClientIds,
-  isContactUpdatedByCurrentUser,
-} from '../../utils/gemsScope';
-import { useGemsViewMode } from '../../utils/gemsRbac';
-import { useStore } from '../../store/useStore';
+import { getClients } from '../../services/graphApi';
+import { loadGemsStakeholders } from '../../services/gemsApi';
+import { filterGemsEligibleClients } from '../../utils/gemsScope';
 import { normalizeLookupText } from '../../utils/lookupHelpers';
 import KriStageBadge from '../shared/KriStageBadge';
 import ClientCard from '../clients/ClientCard';
@@ -52,11 +46,7 @@ interface Props {
 
 export default function GemsStakeholderList({ context }: Props) {
   const navigate = useNavigate();
-  const { effectiveIsAdmin } = useGemsViewMode(context);
-  const currentUserProfile = useStore((state) => state.currentUserProfile);
   const [clients, setClients] = useState<any[]>([]);
-  const [interactions, setInteractions] = useState<any[]>([]);
-  const [comms, setComms] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('Newest');
@@ -66,29 +56,18 @@ export default function GemsStakeholderList({ context }: Props) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all([
-      loadGemsStakeholders(context).catch(() => getClients(context).then(filterGemsEligibleClients)),
-      effectiveIsAdmin ? Promise.resolve([]) : getGemsInteractions(context).catch(() => []),
-      effectiveIsAdmin ? Promise.resolve([]) : getComms(context).catch(() => []),
-    ])
-      .then(([data, interactionRows, commRows]) => {
-        if (cancelled) return;
-        setClients(data);
-        setInteractions(interactionRows);
-        setComms(commRows);
+    loadGemsStakeholders(context)
+      .catch(() => getClients(context).then(filterGemsEligibleClients))
+      .then((data) => {
+        if (!cancelled) setClients(data);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [context, effectiveIsAdmin]);
+  }, [context]);
 
-  const gemsClients = useMemo(() => {
-    const eligible = filterGemsEligibleClients(clients);
-    if (effectiveIsAdmin) return eligible;
-    const updatedIds = getUserUpdatedClientIds(interactions, comms, context, currentUserProfile);
-    return eligible.filter((c) => isContactUpdatedByCurrentUser(c, updatedIds, context, currentUserProfile));
-  }, [clients, interactions, comms, effectiveIsAdmin, context, currentUserProfile]);
+  const gemsClients = useMemo(() => filterGemsEligibleClients(clients), [clients]);
 
   const filtered = useMemo(() => {
     const query = normalizeLookupText(search).toLowerCase();

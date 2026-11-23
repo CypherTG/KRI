@@ -24,13 +24,7 @@ import TagIcon from '@mui/icons-material/Tag';
 import PeopleIcon from '@mui/icons-material/People';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import EventIcon from '@mui/icons-material/Event';
-import {
-  getUserUpdatedClientIds,
-  isContactUpdatedByCurrentUser,
-  isGemsEligibleClient,
-} from '../../utils/gemsScope';
-import { useGemsViewMode } from '../../utils/gemsRbac';
-import { useStore } from '../../store/useStore';
+import { isGemsEligibleClient } from '../../utils/gemsScope';
 
 interface Props {
   context: KriContext;
@@ -70,8 +64,6 @@ const STAGE_COLORS: Record<string, string> = {
 
 export default function GemsStakeholderDetail({ context }: Props) {
   const { id } = useParams();
-  const { effectiveIsAdmin } = useGemsViewMode(context);
-  const currentUserProfile = useStore((state) => state.currentUserProfile);
   const [client, setClient] = useState<IClient | null>(null);
   const [biodata, setBiodata] = useState<BiodataRecord | null>(null);
   const [comms, setComms] = useState<IComm[]>([]);
@@ -131,38 +123,6 @@ export default function GemsStakeholderDetail({ context }: Props) {
             sx={{ fontWeight: 700, borderRadius: 2 }}
           >
             Back to Stakeholder Registry
-          </Button>
-        </Paper>
-      </Box>
-    );
-  }
-
-  const canAccessClient =
-    effectiveIsAdmin ||
-    isContactUpdatedByCurrentUser(
-      client,
-      getUserUpdatedClientIds(interactions, comms, context, currentUserProfile),
-      context,
-      currentUserProfile,
-    );
-
-  if (!canAccessClient) {
-    return (
-      <Box sx={{ p: 4, maxWidth: 640, mx: 'auto', mt: 6 }}>
-        <Paper sx={{ p: 4, borderRadius: 3, textAlign: 'center', border: '1px solid #E8ECF0' }}>
-          <Typography sx={{ fontWeight: 800, fontSize: '1.15rem', color: '#1A1D23', mb: 1 }}>
-            Contact Outside Your Workspace Scope
-          </Typography>
-          <Typography sx={{ fontSize: '0.86rem', color: '#6B7280', mb: 3 }}>
-            You can only view detailed stakeholder records for contacts you updated or own.
-          </Typography>
-          <Button
-            variant="contained"
-            component={RouterLink}
-            to="/gems/stakeholders"
-            sx={{ fontWeight: 700, borderRadius: 2 }}
-          >
-            Back to Your Stakeholders
           </Button>
         </Paper>
       </Box>
