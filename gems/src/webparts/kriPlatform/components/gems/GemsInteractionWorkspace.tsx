@@ -527,7 +527,7 @@ export default function GemsInteractionWorkspace({
       </Box>
 
       <Paper sx={{ p: 2.5, borderRadius: 3, border: '1px solid #E8ECF0' }}>
-        <Typography sx={{ fontWeight: 900, color: '#1A1D23', mb: 1.5 }}>Government Relations Framework</Typography>
+        <Typography sx={{ fontWeight: 900, color: '#1A1D23', mb: 1.5 }}>GEMS Framework</Typography>
         <Alert severity="success" sx={{ borderRadius: 2, mb: 2 }}>
           Stakeholder progression pathway: Unclassified/Ruby informators advance to Coral connectors, then Pearl recommenders, and finally Crown Jewel approvers based on engagement quality, strategic relevance, and influence.
         </Alert>
